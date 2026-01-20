@@ -9,7 +9,7 @@ const VISUAL_CONFIG = {
     TERRAIN: {
         WIDTH: 1600,              // The horizontal span (X-axis) of the terrain plane
         DEPTH: 1600,             // The vertical span (Z-axis) of the terrain plane
-        RESOLUTION: 250,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
+        RESOLUTION: 150,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
         GLOBAL_SCALE: 0.008,     // ⬅️ THIS WAS MISSING
         HEIGHT_MULTIPLIER: 3.0,
 
@@ -50,17 +50,17 @@ const VISUAL_CONFIG = {
     },
 
     WAVES: {
-        FIRST_WAVE_DELAY: 2.0,    // Seconds to wait after page load before first "Inhale"
+        FIRST_WAVE_DELAY: 1.0,    // Seconds to wait after page load before first "Inhale"
         PARTICLES_PER_WAVE: 500,    // How many "seekers" spawn at once
         BATCH_SIZE: 5,              // Higher = faster wave, Lower = smoother FPS
         MAX_WAVE_INTERVAL: 30.0,        // Seconds between waves
-        SWELL_TIME: 3.0,          // Seconds BEFORE spawn the glow starts building
+        SWELL_TIME: 2.0,          // Seconds BEFORE spawn the glow starts building
         MAX_SWELL_OPACITY: 0.4,   // Peak brightness at the moment of spawn
         FLASH_DECAY: 0.01,        // Speed of the fade-out after spawn
         VELOCITY_THRESHOLD: 0.001,  // Speed below which a particle is "done"
         FADE_OUT_SPEED: 0.02,       // How fast they disappear
         MIN_LIFETIME: 1.0,           // Minimum seconds to exist before they can die
-        BUFFER_TIME: 1.5,          // Delay AFTER particles stop before "Swell" starts
+        BUFFER_TIME: 1.0,          // Delay AFTER particles stop before "Swell" starts
     },
 
     // 2. CAMERA & CONTROLS
@@ -118,7 +118,7 @@ const VISUAL_CONFIG = {
         GLOW_COLOR: 0x00ffff, // The color of the outer aura and the trailing path
         STAGING_COLOR: 0x00ffcc, // Bright neon cyan/green from your screenshot
         EMISSIVE_INTENSITY: 0.2,
-        TRAIL_LENGTH: 400,    // Number of points in the tail; longer = more visible history
+        TRAIL_LENGTH: 150,    // Number of points in the tail; longer = more visible history
         AMBIENT_COUNT: 0,   // Number of decorative "dust" motes floating in the air
         HEIGHT_OFFSET: 1.5, // 🆕 Keeps them floating slightly above the mesh
         SPAWN_HEIGHT_OFFSET: 2.0, // Consistent distance above the peak
@@ -160,7 +160,7 @@ const VISUAL_CONFIG = {
     },
 
     INTERACTION: {
-        RIPPLE_STRENGTH: 0.1,    // ⬅️ Vertical height of the wave (was ~8.0)
+        RIPPLE_STRENGTH: 0.2,    // ⬅️ Vertical height of the wave (was ~8.0)
         RIPPLE_SPEED: 5.0,      // How fast the ring expands
         RIPPLE_FREQUENCY: 0.12,  // How many "rings" appear (Lower = fewer/wider)
         RIPPLE_DURATION: 3.0,    // How many seconds the ripple lasts
