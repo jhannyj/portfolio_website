@@ -821,7 +821,7 @@ function LossLandscape() {
                 }
 
                 // 2. PHYSICS & MOVEMENT (Only move if not fading or move slightly)
-                if (!p.isFading) {
+                if (!p.isFading && spawnQueueRef.current === 0) {
                     const grad = gradient(p.x, p.z);
                     p.vx = p.vx * VISUAL_CONFIG.PHYSICS.MOMENTUM - grad.dx * VISUAL_CONFIG.PHYSICS.LEARNING_RATE;
                     p.vz = p.vz * VISUAL_CONFIG.PHYSICS.MOMENTUM - grad.dz * VISUAL_CONFIG.PHYSICS.LEARNING_RATE;
@@ -861,7 +861,7 @@ function LossLandscape() {
                 }
 
                 // 4. TRAIL BUFFER UPDATE (Normal movement)
-                if (!p.isFading) {
+                if (!p.isFading && spawnQueueRef.current === 0) {
                     const posAttr = p.trail.geometry.attributes.position;
                     for (let j = posAttr.count - 1; j > 0; j--) {
                         posAttr.setXYZ(j, posAttr.getX(j - 1), posAttr.getY(j - 1), posAttr.getZ(j - 1));
