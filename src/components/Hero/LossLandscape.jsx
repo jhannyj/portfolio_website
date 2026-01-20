@@ -237,6 +237,8 @@ function LossLandscape() {
     const stateStartTimeRef = useRef(0);
     const lastWaveTimeRef = useRef(0);
     const spawnQueueRef = useRef(0); // Tracks remaining particles to spawn for current wave
+    const raycasterRef = useRef(new THREE.Raycaster());
+    const internalMouseRef = useRef(new THREE.Vector2());
 
     const lossFunction = (x, z) => {
         const { GLOBAL_SCALE, HEIGHT_MULTIPLIER, SEED } = VISUAL_CONFIG.TERRAIN;
@@ -698,13 +700,16 @@ function LossLandscape() {
 
             if (spawnQueueRef.current > 0) {
                 const toSpawn = Math.min(spawnQueueRef.current, WAVES.BATCH_SIZE);
-                const raycaster = new THREE.Raycaster();
 
                 for (let i = 0; i < toSpawn; i++) {
                     const screenX = (Math.random() * 2 - 1);
                     const screenY = (Math.random() * 2 - 1);
-                    raycaster.setFromCamera({ x: screenX, y: screenY }, cameraRef.current);
-                    const intersects = raycaster.intersectObject(terrainRef.current);
+
+                    // Reuse the existing Vector2 and Raycaster
+                    internalMouseRef.current.set(screenX, screenY);
+                    raycasterRef.current.setFromCamera(internalMouseRef.current, cameraRef.current);
+
+                    const intersects = raycasterRef.current.intersectObject(terrainRef.current);
                     if (intersects.length > 0) {
                         const hit = intersects[0].point;
                         spawnParticle(hit.x, -hit.z, hit.y);
@@ -942,8 +947,8 @@ function LossLandscape() {
                 if (rippleUniforms.uRippleTime.value > VISUAL_CONFIG.INTERACTION.RIPPLE_DURATION) rippleUniforms.uRippleTime.value = -1;
             }
 
-            raycaster.setFromCamera(mouseRef.current, cameraRef.current);
-            const hits = raycaster.intersectObject(terrainRef.current);
+            raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
+            const hits = raycasterRef.current.intersectObject(terrainRef.current);
             if (hits.length > 0) {
                 const hit = hits[0];
                 reticle.position.copy(hit.point).add(hit.face.normal.multiplyScalar(CURSOR.SURFACE_OFFSET));
