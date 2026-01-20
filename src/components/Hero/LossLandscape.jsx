@@ -116,6 +116,7 @@ const VISUAL_CONFIG = {
         SIZE: 1.3,           // The physical radius of the descending spheres
         COLOR: 0xffffff,      // The core color of the particle (White = bright light)
         GLOW_COLOR: 0x00ffff, // The color of the outer aura and the trailing path
+        STAGING_COLOR: 0x00ffcc, // Bright neon cyan/green from your screenshot
         EMISSIVE_INTENSITY: 0.2,
         TRAIL_LENGTH: 400,    // Number of points in the tail; longer = more visible history
         AMBIENT_COUNT: 0,   // Number of decorative "dust" motes floating in the air
@@ -842,12 +843,22 @@ function LossLandscape() {
 
                 const reactionFactor = Math.min(1.0, speed * PARTICLES.REACTION.SENSITIVITY);
 
+                // --- VISIBILITY LOGIC ---
                 if (p.isFading) {
-                    // Force fade out regardless of speed
                     p.mesh.material.uniforms.uGlowIntensity.value *= (1.0 - WAVES.FADE_OUT_SPEED);
                     p.mesh.material.uniforms.uOpacity.value *= (1.0 - WAVES.FADE_OUT_SPEED);
+                } else if (spawnQueueRef.current > 0) {
+                    // STAGING PHASE: Force high visibility and specific color
+                    p.mesh.material.uniforms.uGlowIntensity.value = 2.5; // High constant glow
+                    p.mesh.material.uniforms.uOpacity.value = 1.0;      // Fully opaque
+                    p.mesh.material.uniforms.uColor.value.setHex(PARTICLES.STAGING_COLOR);
+
+                    // Keep trail color synced while waiting
+                    p.trail.material.color.setHex(PARTICLES.STAGING_COLOR);
+                    p.trail.material.opacity = 0.8;
                 } else {
-                    // Normal speed-based updates
+                    // ACTIVE PHASE: Normal speed-based updates
+                    const reactionFactor = Math.min(1.0, speed * PARTICLES.REACTION.SENSITIVITY);
                     p.mesh.material.uniforms.uGlowIntensity.value = THREE.MathUtils.lerp(
                         PARTICLES.REACTION.MIN_GLOW,
                         PARTICLES.REACTION.MAX_GLOW,
@@ -858,6 +869,10 @@ function LossLandscape() {
                         PARTICLES.REACTION.MAX_OPACITY,
                         reactionFactor
                     );
+
+                    // Normal color lerping
+                    p.mesh.material.uniforms.uColor.value.lerpColors(cActive, cFlash, speedFactor);
+                    p.trail.material.color.lerpColors(cActive, cFlash, speedFactor);
                 }
 
                 // 4. TRAIL BUFFER UPDATE (Normal movement)
@@ -871,6 +886,13 @@ function LossLandscape() {
 
                     p.trail.material.color.lerpColors(cActive, cFlash, speedFactor);
                     p.mesh.material.uniforms.uColor.value.lerpColors(cActive, cFlash, speedFactor); // ← ADD THIS
+                } else if (!p.isFading && spawnQueueRef.current > 0) {
+                    // STAGING: Keep trail points locked to current position so it doesn't "stretch" from the origin
+                    const posAttr = p.trail.geometry.attributes.position;
+                    for (let j = 0; j < posAttr.count; j++) {
+                        posAttr.setXYZ(j, p.x, newY, -p.z);
+                    }
+                    posAttr.needsUpdate = true;
                 }
 
                 // 1. Get the height-based scale factor
