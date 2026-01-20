@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=DM+Sans:wght@400;500;700&display=swap');
+
+:root {
+  --primary-green: #00E676;
+  --green-dark: #00C965;
+  --green-darker: #00A854;
+  --black: #0A0A0A;
+  --white: #FAFAFA;
+  --gray-light: #F5F5F5;
+  --gray: #999999;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--primary-green);
+  color: var(--black);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+::selection {
+  background: var(--black);
+  color: var(--primary-green);
+}
+
+::-moz-selection {
+  background: var(--black);
+  color: var(--primary-green);
+}
