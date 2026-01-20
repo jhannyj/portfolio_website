@@ -9,7 +9,7 @@ const VISUAL_CONFIG = {
     TERRAIN: {
         WIDTH: 1600,              // The horizontal span (X-axis) of the terrain plane
         DEPTH: 1600,             // The vertical span (Z-axis) of the terrain plane
-        RESOLUTION: 150,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
+        RESOLUTION: 200,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
         GLOBAL_SCALE: 0.008,     // ⬅️ THIS WAS MISSING
         HEIGHT_MULTIPLIER: 3.0,
 
@@ -571,10 +571,10 @@ function LossLandscape() {
         reticle.rotation.x = -Math.PI / 2;
         scene.add(reticle);
 
-        const raycaster = new THREE.Raycaster();
-
         // Outside of spawnParticle (near the top of useEffect)
         const globalParticleGeo = new THREE.SphereGeometry(VISUAL_CONFIG.PARTICLES.SIZE, 12, 12);
+        const globalTrailGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(VISUAL_CONFIG.PARTICLES.TRAIL_LENGTH * 3), 3));
+
 
         // 7. PARTICLE SPAWNING
         const spawnParticle = (x, z, overrideY = null) => {
@@ -596,15 +596,15 @@ function LossLandscape() {
             mesh.castShadow = VISUAL_CONFIG.SCENE.SHADOWS_ENABLED;
 
             // 3. Initialize the Trail
-            const trailPositions = new Float32Array(VISUAL_CONFIG.PARTICLES.TRAIL_LENGTH * 3);
-            for(let i = 0; i < trailPositions.length; i += 3) {
-                trailPositions[i] = x;
-                trailPositions[i+1] = spawnY;
-                trailPositions[i+2] = -z;
+            // 3. Initialize the Trail by cloning the template
+            const tGeo = globalTrailGeo.clone();
+            const posAttr = tGeo.attributes.position;
+
+            // Set all points in the trail to the initial spawn position
+            for (let i = 0; i < posAttr.count; i++) {
+                posAttr.setXYZ(i, x, spawnY, -z);
             }
 
-            const tGeo = new THREE.BufferGeometry();
-            tGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
             const tMat = new THREE.LineBasicMaterial({
                 color: VISUAL_CONFIG.PARTICLES.GLOW_COLOR,
                 transparent: true,
@@ -846,8 +846,6 @@ function LossLandscape() {
                 const cActive = new THREE.Color(0x00ff88);
                 const cFlash = new THREE.Color(0xffffff);
 
-                const reactionFactor = Math.min(1.0, speed * PARTICLES.REACTION.SENSITIVITY);
-
                 // --- VISIBILITY LOGIC ---
                 if (p.isFading) {
                     p.mesh.material.uniforms.uGlowIntensity.value *= (1.0 - WAVES.FADE_OUT_SPEED);
@@ -970,6 +968,8 @@ function LossLandscape() {
             containerRef.current?.removeEventListener('click', handleClick);
             containerRef.current?.removeEventListener('wheel', handleWheel);
             cancelAnimationFrame(frameIdRef.current);
+            globalParticleGeo.dispose();
+            globalTrailGeo.dispose();
             renderer.dispose();
         };
     }, []);
