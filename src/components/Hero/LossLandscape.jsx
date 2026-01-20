@@ -458,8 +458,9 @@ function LossLandscape() {
                 '#include <begin_vertex>',
                 `
         vec3 vPos = position;
-        float dist = distance(vPos.xz, uRippleCenter.xz);
-        if (uRippleTime > 0.0) {
+        // Optimization: Only run expensive distance and wave math if ripple is active
+        if (uRippleTime >= 0.0) {
+            float dist = distance(vPos.xz, uRippleCenter.xz);
             float wave = sin(dist * uRippleFreq - uRippleTime * uRippleSpeed);
             float t = uRippleTime / ${VISUAL_CONFIG.INTERACTION.RIPPLE_DURATION.toFixed(1)};
             float life = 1.0 - pow(t, 3.0); 
@@ -508,9 +509,8 @@ function LossLandscape() {
     float dist = length(vViewPosition);
     
     // Define where the "Deep Back" starts (e.g., 800 units away)
-    float hazeStart = 600.0;
-    float hazeEnd = 1200.0;
-    float hazeFactor = smoothstep(hazeStart, hazeEnd, dist);
+    // Optimized haze: using constants directly in the smoothstep
+    float hazeFactor = smoothstep(600.0, 1200.0, dist);
     
     // Mix the current color with the background/fog color
     vec3 hazeColor = vec3(0.0, 0.06, 0.05); // A very dark teal
