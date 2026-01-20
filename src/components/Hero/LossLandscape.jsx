@@ -11,7 +11,7 @@ const VISUAL_CONFIG = {
         DEPTH: 1600,             // The vertical span (Z-axis) of the terrain plane
         RESOLUTION: 250,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
         GLOBAL_SCALE: 0.008,     // ⬅️ THIS WAS MISSING
-        HEIGHT_MULTIPLIER: 2.5,
+        HEIGHT_MULTIPLIER: 3.0,
 
         VARIETY: {
             MASK_SCALE: 10.0,    // 🆕 Controls how large the "different" areas are
@@ -31,8 +31,8 @@ const VISUAL_CONFIG = {
         DETAIL:  { FREQ: 9.17, AMP: 0.5 },                // Fine-grain surface "grit" or microscopic noise
 
         // 🎨 COLOR DEPTH & MATERIAL
-        BASE_COLOR_RGB: { r: 0.0, g: 0.25, b: 0.12 },    // Color of the deepest valleys (Low Loss areas)
-        PEAK_COLOR_OFFSET: { r: 0.08, g: 0.85, b: 0.42 },    // Color added to the peaks (High Loss areas)
+        BASE_COLOR_RGB: { r: 0.0, g: 0.05, b: 0.03 },    // Color of the deepest valleys (Low Loss areas)
+        PEAK_COLOR_OFFSET: { r: 0.1, g: 1.0, b: 0.6 },    // Color added to the peaks (High Loss areas)
 
         WIREFRAME_COLOR: 0x00ff88,                        // Color of the glowing cyber-grid lines
         WIREFRAME_OPACITY: 0.1,                          // Transparency of the grid (0.0 to 1.0)
@@ -146,7 +146,7 @@ const VISUAL_CONFIG = {
         BACKGROUND: 0x001a12,           // The color of the empty "void" and distant horizon
         FOG_DENSITY: 0.0044,             // Atmospheric thickness: Higher makes distant peaks fade into black
         LIGHT_SUN_COLOR: 0xffffff,      // Color of the primary directional light source
-        LIGHT_SUN_INTENSITY: 1.2,       // Brightness of the "sun"; creates strong highlights
+        LIGHT_SUN_INTENSITY: 2.5,       // Brightness of the "sun"; creates strong highlights
         LIGHT_AMBIENT_INTENSITY: 0.3,   // Base light level; prevents the shadows from being pitch black
 
         // Visibility Toggles
