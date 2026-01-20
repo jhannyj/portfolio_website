@@ -11,7 +11,7 @@ const VISUAL_CONFIG = {
         DEPTH: 1600,             // The vertical span (Z-axis) of the terrain plane
         RESOLUTION: 250,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
         GLOBAL_SCALE: 0.008,     // ⬅️ THIS WAS MISSING
-        HEIGHT_MULTIPLIER: 1.8,
+        HEIGHT_MULTIPLIER: 2.5,
 
         VARIETY: {
             MASK_SCALE: 10.0,    // 🆕 Controls how large the "different" areas are
@@ -51,7 +51,8 @@ const VISUAL_CONFIG = {
 
     WAVES: {
         FIRST_WAVE_DELAY: 2.0,    // Seconds to wait after page load before first "Inhale"
-        PARTICLES_PER_WAVE: 100,    // How many "seekers" spawn at once
+        PARTICLES_PER_WAVE: 500,    // How many "seekers" spawn at once
+        BATCH_SIZE: 5,              // Higher = faster wave, Lower = smoother FPS
         MAX_WAVE_INTERVAL: 30.0,        // Seconds between waves
         SWELL_TIME: 3.0,          // Seconds BEFORE spawn the glow starts building
         MAX_SWELL_OPACITY: 0.4,   // Peak brightness at the moment of spawn
@@ -234,6 +235,7 @@ function LossLandscape() {
     const waveStateRef = useRef('WAITING'); // 'ACTIVE', 'WAITING', 'SWELLING'
     const stateStartTimeRef = useRef(0);
     const lastWaveTimeRef = useRef(0);
+    const spawnQueueRef = useRef(0); // Tracks remaining particles to spawn for current wave
 
     const lossFunction = (x, z) => {
         const { GLOBAL_SCALE, HEIGHT_MULTIPLIER, SEED } = VISUAL_CONFIG.TERRAIN;
@@ -645,38 +647,39 @@ function LossLandscape() {
         containerRef.current.addEventListener('wheel', handleWheel, { passive: false });
 
         // WAVE
-        const spawnWave = () => {
-            const { PARTICLES_PER_WAVE } = VISUAL_CONFIG.WAVES;
-            const raycaster = new THREE.Raycaster();
-
-            let spawned = 0;
-            let attempts = 0;
-
-            // We keep trying until we hit the exact PARTICLES_PER_WAVE count
-            while (spawned < PARTICLES_PER_WAVE && attempts < PARTICLES_PER_WAVE * 3) {
-                attempts++;
-
-                // 1. Pick a random 2D coordinate on the screen (-1 to +1)
-                const screenX = (Math.random() * 2 - 1);
-                const screenY = (Math.random() * 2 - 1);
-
-                // 2. Point the raycaster from the camera through this screen point
-                raycaster.setFromCamera({ x: screenX, y: screenY }, cameraRef.current);
-
-                // 3. Find where it hits the terrain
-                const intersects = raycaster.intersectObject(terrainRef.current);
-
-                if (intersects.length > 0) {
-                    const hit = intersects[0].point;
-
-                    // 4. Extract coordinates
-                    // Note: terrain is rotated, so hit.z is world space.
-                    // Our spawnParticle expects internal 'z' which we established as -hit.z
-                    spawnParticle(hit.x, -hit.z, hit.y);
-                    spawned++;
-                }
-            }
-        };
+        // Deprecated: all particles at the same time
+        // const spawnWave = () => {
+        //     const { PARTICLES_PER_WAVE } = VISUAL_CONFIG.WAVES;
+        //     const raycaster = new THREE.Raycaster();
+        //
+        //     let spawned = 0;
+        //     let attempts = 0;
+        //
+        //     // We keep trying until we hit the exact PARTICLES_PER_WAVE count
+        //     while (spawned < PARTICLES_PER_WAVE && attempts < PARTICLES_PER_WAVE * 3) {
+        //         attempts++;
+        //
+        //         // 1. Pick a random 2D coordinate on the screen (-1 to +1)
+        //         const screenX = (Math.random() * 2 - 1);
+        //         const screenY = (Math.random() * 2 - 1);
+        //
+        //         // 2. Point the raycaster from the camera through this screen point
+        //         raycaster.setFromCamera({ x: screenX, y: screenY }, cameraRef.current);
+        //
+        //         // 3. Find where it hits the terrain
+        //         const intersects = raycaster.intersectObject(terrainRef.current);
+        //
+        //         if (intersects.length > 0) {
+        //             const hit = intersects[0].point;
+        //
+        //             // 4. Extract coordinates
+        //             // Note: terrain is rotated, so hit.z is world space.
+        //             // Our spawnParticle expects internal 'z' which we established as -hit.z
+        //             spawnParticle(hit.x, -hit.z, hit.y);
+        //             spawned++;
+        //         }
+        //     }
+        // };
 
         // 9. ANIMATION LOOP (RESTORED ZOOM & STEERING)
         let smoothMouseX = 0;
@@ -691,6 +694,23 @@ function LossLandscape() {
             const currentTime = timeRef.current;
 
             const { CAMERA, PHYSICS, PARTICLES, CURSOR, WAVES , TERRAIN} = VISUAL_CONFIG;
+
+            if (spawnQueueRef.current > 0) {
+                const toSpawn = Math.min(spawnQueueRef.current, WAVES.BATCH_SIZE);
+                const raycaster = new THREE.Raycaster();
+
+                for (let i = 0; i < toSpawn; i++) {
+                    const screenX = (Math.random() * 2 - 1);
+                    const screenY = (Math.random() * 2 - 1);
+                    raycaster.setFromCamera({ x: screenX, y: screenY }, cameraRef.current);
+                    const intersects = raycaster.intersectObject(terrainRef.current);
+                    if (intersects.length > 0) {
+                        const hit = intersects[0].point;
+                        spawnParticle(hit.x, -hit.z, hit.y);
+                    }
+                }
+                spawnQueueRef.current -= toSpawn;
+            }
 
             // 1. ANALYZE CURRENT STATE
             const activeParticles = particlesRef.current.filter(p => !p.isFading);
@@ -715,7 +735,7 @@ function LossLandscape() {
 
             if (waveStateRef.current === 'SWELLING' && (currentTime - stateStartTimeRef.current > WAVES.SWELL_TIME)) {
                 // Inhale complete. Release the particles!
-                spawnWave();
+                spawnQueueRef.current = VISUAL_CONFIG.WAVES.PARTICLES_PER_WAVE;
                 waveStateRef.current = 'ACTIVE';
                 lastWaveTimeRef.current = currentTime;
                 // Set exactly at peak to ensure the handoff to decay is clean
@@ -734,6 +754,8 @@ function LossLandscape() {
                     wireframe.material.opacity -= (wireframe.material.opacity - TERRAIN.WIREFRAME_OPACITY) * WAVES.FLASH_DECAY;
                 }
             }
+
+
 
             // 2. CAMERA & ZOOM
             smoothMouseX += (mouseRef.current.x - smoothMouseX) * CAMERA.MOUSE_SMOOTHING;
