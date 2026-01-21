@@ -1,6 +1,18 @@
 import {useEffect, useRef} from 'react';
 import * as THREE from 'three';
 
+// TODO: fix left and right camera movement - I think it's currently not dependent on the CAMERA_LOOK_AT / its hard coded
+// TODO: disable camera movement unless user is holding down mouse left click - also spawn balls where left click hold down on some interval
+// TODO: clean up visual configs - some configs aren't actually used
+// TODO: dont' render things behind the camera / don't make the terrain behind the camera
+// TODO: make reticule larger with distance from camera
+// TODO: make reticule brighter / stand out more
+// TODO: make transition between "wave waiting state" to "running state" smoother
+// TODO: add bias to points far away from camera
+// TODO: add loss function in background
+// TODO: add ability to load terrain data from drive since first seed will be manual / terrain will be the same everytime
+// TODO: add cinematic load in
+
 // ==========================================
 // 🎛️ GLOBAL VISUAL CONFIGURATION (TUNED DOWN)
 // ==========================================
@@ -20,7 +32,8 @@ const VISUAL_CONFIG = {
         },
 
         // Initializing with a random value ensures every refresh is unique
-        SEED: Math.random() * 10000,
+        // SEED: Math.random() * 10000,
+        SEED: 5520.35550386228,
 
         // 🏔️ AMPLITUDE CONTRAST (Octaves of Noise)
         // Frequency (FREQ): How many peaks in an area | Amplitude (AMP): How tall those peaks are
@@ -52,7 +65,7 @@ const VISUAL_CONFIG = {
     WAVES: {
         FIRST_WAVE_DELAY: 1.0,    // Seconds to wait after page load before first "Inhale"
         PARTICLES_PER_WAVE: 500,    // How many "seekers" spawn at once
-        BATCH_SIZE: 5,              // Higher = faster wave, Lower = smoother FPS
+        BATCH_SIZE: 2,              // Higher = faster wave, Lower = smoother FPS
         MAX_WAVE_INTERVAL: 30.0,        // Seconds between waves
         SWELL_TIME: 2.0,          // Seconds BEFORE spawn the glow starts building
         MAX_SWELL_OPACITY: 0.4,   // Peak brightness at the moment of spawn
@@ -66,8 +79,8 @@ const VISUAL_CONFIG = {
     // 2. CAMERA & CONTROLS
     CAMERA: {
         FOV: 55,                          // Wide angle for the terrain
-        INITIAL_POS: { x: 40, y: 100, z: 50 }, // Fixed starting position
-        LOOK_AT_TARGET: { x: 0, y: 20, z: 0 }, // The default point the camera looks at
+        INITIAL_POS: { x: 0, y: 100, z: 0 }, // Fixed starting position
+        LOOK_AT_TARGET: { x: -132, y: 60, z: 0 }, // The default point the camera looks at
 
         // 🆕 Intuitive Control Settings
         MOUSE_SMOOTHING: 0.06,      // Higher = snappier, Lower = more "weight"
@@ -109,6 +122,7 @@ const VISUAL_CONFIG = {
         LEARNING_RATE: 0.002, // Velocity: How fast the "optimizer" balls roll down the slopes
         MOMENTUM: 0.92,       // Inertia: Higher makes balls "slide" further and escape small pits
         MAX_AGE: 1200,        // Lifespan: Number of frames a particle exists before disappearing
+        GRADIENT_MAP_RESOLUTION: 512, // Pre-computed gradient map grid size (higher = more accurate, slower build)
     },
 
     // 4. PARTICLES (The Optimizers)
@@ -120,7 +134,7 @@ const VISUAL_CONFIG = {
         EMISSIVE_INTENSITY: 0.2,
         TRAIL_LENGTH: 150,    // Number of points in the tail; longer = more visible history
         AMBIENT_COUNT: 0,   // Number of decorative "dust" motes floating in the air
-        HEIGHT_OFFSET: 1.5, // 🆕 Keeps them floating slightly above the mesh
+        HEIGHT_OFFSET: 5.0, // 🆕 Keeps them floating slightly above the mesh
         SPAWN_HEIGHT_OFFSET: 2.0, // Consistent distance above the peak
 
         COLOR_SPEED_THRESHOLD: 0.1,            // Speed at which color is 100% "Fast"
@@ -306,7 +320,7 @@ function LossLandscape() {
     // we sample from a pre-computed gradient texture.
     // ==========================================
     const GRADIENT_MAP_CONFIG = {
-        RESOLUTION: 256,  // Grid resolution for gradient map (256x256 = 65K lookups vs millions of noise calls)
+        RESOLUTION: VISUAL_CONFIG.PHYSICS.GRADIENT_MAP_RESOLUTION, // Adjustable in VISUAL_CONFIG
         // Terrain bounds (matching VISUAL_CONFIG.TERRAIN)
         MIN_X: -VISUAL_CONFIG.TERRAIN.WIDTH / 2,
         MAX_X: VISUAL_CONFIG.TERRAIN.WIDTH / 2,
@@ -344,61 +358,38 @@ function LossLandscape() {
         return { dxMap, dzMap, stepX, stepZ };
     };
 
-    // Sample gradient from pre-computed map with bilinear interpolation
+    // Sample gradient from pre-computed map with nearest-neighbor lookup
     const gradient = (x, z) => {
         const map = gradientMapRef.current;
-
-        // Fallback to original computation if map not ready
-        if (!map) {
-            const h = 0.05;
-            const f0 = lossFunction(x, z);
-            if (!isFinite(f0)) return { dx: 0, dz: 0 };
-            const dx = (lossFunction(x + h, z) - lossFunction(x - h, z)) / (2 * h);
-            const dz = (lossFunction(x, z + h) - lossFunction(x, z - h)) / (2 * h);
-            return { dx: isFinite(dx) ? dx : 0, dz: isFinite(dz) ? dz : 0 };
-        }
+        if (!map) return { dx: 0, dz: 0 };
 
         const { RESOLUTION, MIN_X, MAX_X, MIN_Z, MAX_Z } = GRADIENT_MAP_CONFIG;
         const { dxMap, dzMap } = map;
 
-        // Convert world coordinates to grid coordinates (0 to RESOLUTION-1)
+        // Convert world to grid space
         const gx = ((x - MIN_X) / (MAX_X - MIN_X)) * (RESOLUTION - 1);
         const gz = ((z - MIN_Z) / (MAX_Z - MIN_Z)) * (RESOLUTION - 1);
 
-        // Clamp to valid range
-        const gxClamped = Math.max(0, Math.min(RESOLUTION - 1.001, gx));
-        const gzClamped = Math.max(0, Math.min(RESOLUTION - 1.001, gz));
+        // Get the integer coordinates of the 4 surrounding points
+        const x0 = Math.floor(THREE.MathUtils.clamp(gx, 0, RESOLUTION - 2));
+        const x1 = x0 + 1;
+        const z0 = Math.floor(THREE.MathUtils.clamp(gz, 0, RESOLUTION - 2));
+        const z1 = z0 + 1;
 
-        // Get integer grid indices and fractional parts for interpolation
-        const ix0 = Math.floor(gxClamped);
-        const iz0 = Math.floor(gzClamped);
-        const ix1 = Math.min(ix0 + 1, RESOLUTION - 1);
-        const iz1 = Math.min(iz0 + 1, RESOLUTION - 1);
+        // Get the fractional distance between those points
+        const tx = gx - x0;
+        const tz = gz - z0;
 
-        const fx = gxClamped - ix0; // Fractional x (0 to 1)
-        const fz = gzClamped - iz0; // Fractional z (0 to 1)
+        const sample = (array) => {
+            const v00 = array[z0 * RESOLUTION + x0];
+            const v10 = array[z0 * RESOLUTION + x1];
+            const v01 = array[z1 * RESOLUTION + x0];
+            const v11 = array[z1 * RESOLUTION + x1];
+            // Bilinear interpolation formula
+            return (1 - tx) * (1 - tz) * v00 + tx * (1 - tz) * v10 + (1 - tx) * tz * v01 + tx * tz * v11;
+        };
 
-        // Bilinear interpolation for dx
-        const dx00 = dxMap[iz0 * RESOLUTION + ix0];
-        const dx10 = dxMap[iz0 * RESOLUTION + ix1];
-        const dx01 = dxMap[iz1 * RESOLUTION + ix0];
-        const dx11 = dxMap[iz1 * RESOLUTION + ix1];
-
-        const dxTop = dx00 + (dx10 - dx00) * fx;
-        const dxBot = dx01 + (dx11 - dx01) * fx;
-        const dx = dxTop + (dxBot - dxTop) * fz;
-
-        // Bilinear interpolation for dz
-        const dz00 = dzMap[iz0 * RESOLUTION + ix0];
-        const dz10 = dzMap[iz0 * RESOLUTION + ix1];
-        const dz01 = dzMap[iz1 * RESOLUTION + ix0];
-        const dz11 = dzMap[iz1 * RESOLUTION + ix1];
-
-        const dzTop = dz00 + (dz10 - dz00) * fx;
-        const dzBot = dz01 + (dz11 - dz01) * fx;
-        const dz_interp = dzTop + (dzBot - dzTop) * fz;
-
-        return { dx, dz: dz_interp };
+        return { dx: sample(dxMap), dz: sample(dzMap) };
     };
 
     useEffect(() => {
@@ -716,8 +707,6 @@ function LossLandscape() {
 
         const handleClick = () => {
             if (reticle.visible) {
-                console.log('Reticle pos:', reticle.position.x, reticle.position.y, reticle.position.z);
-                console.log('LossFunc at reticle:', lossFunction(reticle.position.x, -reticle.position.z));
                 spawnParticle(reticle.position.x, -reticle.position.z, reticle.position.y);
                 rippleUniforms.uRippleCenter.value.copy(reticle.position);
                 rippleUniforms.uRippleTime.value = 0.0;
@@ -782,12 +771,30 @@ function LossLandscape() {
         // This ensures the first wave doesn't start until FIRST_WAVE_DELAY is reached
         stateStartTimeRef.current = VISUAL_CONFIG.WAVES.FIRST_WAVE_DELAY - VISUAL_CONFIG.WAVES.BUFFER_TIME;
 
+        let lastLogTime = 0;
         const animate = () => {
             frameIdRef.current = requestAnimationFrame(animate);
             timeRef.current += 0.016;
             const currentTime = timeRef.current;
 
             const { CAMERA, PHYSICS, PARTICLES, CURSOR, WAVES , TERRAIN} = VISUAL_CONFIG;
+
+            // 2. PRINT CAMERA DATA EVERY 5 SECONDS
+            if (currentTime - lastLogTime > 5.0) {
+                const lookAt = new THREE.Vector3();
+                // Extract the direction the camera is facing
+                cameraRef.current.getWorldDirection(lookAt);
+
+                // Multiply by a distance to see what the "target" point is
+                // Or simply log the current computed target from your config logic
+                console.log("📸 Camera Target:", {
+                    x: CAMERA.LOOK_AT_TARGET.x + (smoothMouseX * CAMERA.LOOK_SENSITIVITY_X * 50),
+                    y: CAMERA.LOOK_AT_TARGET.y + (smoothMouseY * CAMERA.LOOK_SENSITIVITY_Y * 30),
+                    z: CAMERA.LOOK_AT_TARGET.z
+                });
+
+                lastLogTime = currentTime;
+            }
 
             if (spawnQueueRef.current > 0) {
                 const toSpawn = Math.min(spawnQueueRef.current, WAVES.BATCH_SIZE);
@@ -920,10 +927,23 @@ function LossLandscape() {
                 // 2. PHYSICS & MOVEMENT (Only move if not fading or move slightly)
                 if (!p.isFading && spawnQueueRef.current === 0) {
                     const grad = gradient(p.x, p.z);
-                    p.vx = p.vx * VISUAL_CONFIG.PHYSICS.MOMENTUM - grad.dx * VISUAL_CONFIG.PHYSICS.LEARNING_RATE;
-                    p.vz = p.vz * VISUAL_CONFIG.PHYSICS.MOMENTUM - grad.dz * VISUAL_CONFIG.PHYSICS.LEARNING_RATE;
-                    p.x += p.vx;
-                    p.z += p.vz;
+
+                    // Calculate new velocity
+                    const nextVx = p.vx * VISUAL_CONFIG.PHYSICS.MOMENTUM - grad.dx * VISUAL_CONFIG.PHYSICS.LEARNING_RATE;
+                    const nextVz = p.vz * VISUAL_CONFIG.PHYSICS.MOMENTUM - grad.dz * VISUAL_CONFIG.PHYSICS.LEARNING_RATE;
+
+                    const speed = Math.sqrt(nextVx * nextVx + nextVz * nextVz);
+
+                    // This prevents micro-jitter at the bottom of a basin
+                    if (speed > 0.0001) {
+                        p.vx = nextVx;
+                        p.vz = nextVz;
+                        p.x += p.vx;
+                        p.z += p.vz;
+                    } else {
+                        p.vx = 0;
+                        p.vz = 0;
+                    }
                 }
 
                 const newY = lossFunction(p.x, p.z) + VISUAL_CONFIG.PARTICLES.HEIGHT_OFFSET;
@@ -1021,7 +1041,7 @@ function LossLandscape() {
                     p.mesh.scale.multiplyScalar(1.0 - VISUAL_CONFIG.WAVES.FADE_OUT_SPEED);
                 } else {
                     // Apply the calculated size smoothly
-                    const lerpSpeed = 0.1;
+                const lerpSpeed = speed < 0.01 ? 0.02 : 0.1;
                     p.mesh.scale.set(
                         THREE.MathUtils.lerp(p.mesh.scale.x, finalScale, lerpSpeed),
                         THREE.MathUtils.lerp(p.mesh.scale.y, finalScale, lerpSpeed),
