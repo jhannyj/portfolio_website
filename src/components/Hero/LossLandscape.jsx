@@ -2,7 +2,9 @@ import {useEffect, useRef} from 'react';
 import * as THREE from 'three';
 
 // TODO: fix left and right camera movement - I think it's currently not dependent on the CAMERA_LOOK_AT / its hard coded
-// TODO: disable camera movement unless user is holding down mouse left click - also spawn balls where left click hold down on some interval
+// TODO: disable camera movement unless user is holding down middle click
+// TODO: allow user to spawn balls by holding down left lick
+// TODO: add terrain distortion on mouse hover over terrain
 // TODO: clean up visual configs - some configs aren't actually used
 // TODO: dont' render things behind the camera / don't make the terrain behind the camera
 // TODO: make reticule larger with distance from camera
