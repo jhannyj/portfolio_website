@@ -1,8 +1,13 @@
 import {useEffect, useRef} from 'react';
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 // DONE: fix left and right camera movement - I think it's currently not dependent on the CAMERA_LOOK_AT / its hard coded
 // DONE: disable camera movement unless user is holding down middle click
+// TODO: fix camera choppiness whn wave is spawning
 // TODO: allow user to spawn balls by holding down left lick
 // TODO: add terrain distortion on mouse hover over terrain
 // TODO: clean up visual configs - some configs aren't actually used
@@ -53,32 +58,27 @@ const VISUAL_CONFIG = {
         DETAIL:  { FREQ: 9.17, AMP: 0.5 },                // Fine-grain surface "grit" or microscopic noise
 
         // 🎨 COLOR DEPTH & MATERIAL
-        BASE_COLOR_RGB: { r: 0.0, g: 0.05, b: 0.03 },    // Color of the deepest valleys (Low Loss areas)
-        PEAK_COLOR_OFFSET: { r: 0.1, g: 1.0, b: 0.6 },    // Color added to the peaks (High Loss areas)
+        BASE_COLOR_RGB: { r: 0.0, g: 0.01, b: 0.03 },    // Color of the deepest valleys (Low Loss areas)
+        PEAK_COLOR_OFFSET: { r: 0.6, g: 1.0, b: 0.8 },    // Color added to the peaks (High Loss areas)
 
-        WIREFRAME_COLOR: 0x00ff88,                        // Color of the glowing cyber-grid lines
-        WIREFRAME_OPACITY: 0.05,                          // Transparency of the grid (0.0 to 1.0)
+        WIREFRAME_COLOR: 0x00ccaa,                        // Color of the glowing cyber-grid lines
+        WIREFRAME_OPACITY: 0.07,                          // Transparency of the grid (0.0 to 1.0)
         ROUGHNESS: 0.7,                                  // Surface texture: 0.0 is shiny/glossy, 1.0 is matte
         METALNESS: 0.5,                                   // Reflectivity: Higher makes the surface look more metallic
         EMISSIVE_INTENSITY: 0.1,
-    },
-
-    EXTREMA: {
-        GRADIENT_THRESHOLD: 100000000000.0,     // Lower = more points detected as minima, try 200-2000
-        DETECTION_SHARPNESS: 2.0,      // Higher = sharper transitions, try 1.5-3.0
-        ADDITIVE_STRENGTH: 0.0,        // How bright the minima glow is (0.0-2.0)
-
-        MINIMA_COLOR: { r: 1.0, g: 0.0, b: 0.0 },  // Bright cyan for minimas
+        HEIGHT_INTENSITY: 10.0,
+        HEIGHT_BLOOM: 80.0,
+        EDGE_FADE_MARGIN: 600.0, // Increase this for a softer, more gradual disappear
     },
 
     WAVES: {
-        FIRST_WAVE_DELAY: 10000.0,    // Seconds to wait after page load before first "Inhale"
+        FIRST_WAVE_DELAY: 1.0,    // Seconds to wait after page load before first "Inhale"
         PARTICLES_PER_WAVE: 500,    // How many "seekers" spawn at once
-        BATCH_SIZE: 2,              // Higher = faster wave, Lower = smoother FPS
+        BATCH_SIZE: 1,              // Higher = faster wave, Lower = smoother FPS
         MAX_WAVE_INTERVAL: 30.0,        // Seconds between waves
         SWELL_TIME: 2.0,          // Seconds BEFORE spawn the glow starts building
-        MAX_SWELL_OPACITY: 0.4,   // Peak brightness at the moment of spawn
-        FLASH_DECAY: 0.01,        // Speed of the fade-out after spawn
+        MAX_SWELL_OPACITY: 0.22,   // Peak brightness at the moment of spawn
+        FLASH_DECAY: 0.15,        // Speed of the fade-out after spawn
         VELOCITY_THRESHOLD: 0.001,  // Speed below which a particle is "done"
         FADE_OUT_SPEED: 0.02,       // How fast they disappear
         MIN_LIFETIME: 1.0,           // Minimum seconds to exist before they can die
@@ -148,8 +148,8 @@ const VISUAL_CONFIG = {
         COLOR_INTERPOLATION_SPEED: 0.2,        // How quickly the color shifts (smoothing)
 
         LOSS_SCALE_SENSITIVITY: 3.0,
-        MIN_LOSS_SCALE: 0.5,          // Minimum possible size multiplier
-        MAX_LOSS_SCALE: 10.0,          // Maximum possible size multiplier
+        MIN_LOSS_SCALE: 1.0,          // Minimum possible size multiplier
+        MAX_LOSS_SCALE: 20.0,          // Maximum possible size multiplier
         REVERSE_SCALING: false,        // Set true if you want BIG loss = BIG particle
         SCALE_DISTRIBUTION_POWER: 2.5,
 
@@ -159,18 +159,23 @@ const VISUAL_CONFIG = {
             MIN_OPACITY: 0.05,   // Minimum core visibility
             MAX_OPACITY: 1.0,   // Maximum core visibility
             SENSITIVITY: 15.0,  // How much speed affects visibility
-        }
+        },
+
+        AMBIENT_DUST: {
+            COUNT: 1500,
+            SIZE: 1.5,
+            COLOR: 0x00ffcc,
+            DRIFT_SPEED: 0.2,
+            HEIGHT_RANGE: 400,
+        },
     },
 
     // 5. SCENE & LIGHTING
     SCENE: {
         BACKGROUND: 0x001a12,           // The color of the empty "void" and distant horizon
-        FOG_NEAR: 0,
-        FOG_FAR: 3000,
-        FOG_DENSITY: 0.0024,             // Atmospheric thickness: Higher makes distant peaks fade into black
         LIGHT_SUN_COLOR: 0xffffff,      // Color of the primary directional light source
         LIGHT_SUN_INTENSITY: 2.5,       // Brightness of the "sun"; creates strong highlights
-        LIGHT_AMBIENT_INTENSITY: 0.3,   // Base light level; prevents the shadows from being pitch black
+        LIGHT_AMBIENT_INTENSITY: 0.05,   // Base light level; prevents the shadows from being pitch black
 
         // Visibility Toggles
         SHADOWS_ENABLED: true,          // Toggle for dynamic shadows on the terrain slopes
@@ -180,6 +185,7 @@ const VISUAL_CONFIG = {
         // Shadow Tuning
         SHADOW_BIAS: -0.0002,           // Prevents "shadow acne" (jagged lines on the mesh)
         SHADOW_NORMAL_BIAS: 0.03,       // Fine-tunes shadow positioning along the terrain curves
+        FOG_DENSITY: 0.0008, // Adjust this: 0.001 is thick, 0.0005 is subtle
     },
 
     INTERACTION: {
@@ -188,7 +194,14 @@ const VISUAL_CONFIG = {
         RIPPLE_FREQUENCY: 0.12,  // How many "rings" appear (Lower = fewer/wider)
         RIPPLE_DURATION: 3.0,    // How many seconds the ripple lasts
         RIPPLE_SMOOTHNESS: 100.0,
-    }
+    },
+
+    BLOOM: {
+        STRENGTH: 1.0,    // How intense the glow is
+        RADIUS: 0.4,      // How far the light bleeds
+        THRESHOLD: 0.18    // 0.0 = everything glows, 1.0 = only very bright spots glow
+    },
+
 };
 
 const ParticleShader = {
@@ -416,14 +429,13 @@ function LossLandscape() {
         };
 
         const scene = new THREE.Scene();
-        // scene.fog = new THREE.FogExp2(VISUAL_CONFIG.SCENE.BACKGROUND, VISUAL_CONFIG.SCENE.FOG_DENSITY);
-        scene.fog = new THREE.Fog(
-            VISUAL_CONFIG.SCENE.BACKGROUND,
-            VISUAL_CONFIG.SCENE.FOG_NEAR,
-            VISUAL_CONFIG.SCENE.FOG_FAR
-        );
         scene.background = new THREE.Color(VISUAL_CONFIG.SCENE.BACKGROUND);
         sceneRef.current = scene;
+
+        scene.fog = new THREE.FogExp2(
+            VISUAL_CONFIG.SCENE.BACKGROUND,
+            VISUAL_CONFIG.SCENE.FOG_DENSITY
+        );
 
         // 3. CAMERA & RENDERER
         const camera = new THREE.PerspectiveCamera(
@@ -442,6 +454,21 @@ function LossLandscape() {
         containerRef.current.innerHTML = '';
         containerRef.current.appendChild(renderer.domElement);
         rendererRef.current = renderer;
+
+        // 1. Setup Composer
+        const renderScene = new RenderPass(scene, camera);
+
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(containerRef.current.clientWidth, containerRef.current.clientHeight),
+            VISUAL_CONFIG.BLOOM.STRENGTH,
+            VISUAL_CONFIG.BLOOM.RADIUS,
+            VISUAL_CONFIG.BLOOM.THRESHOLD
+        );
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+        composer.addPass(new OutputPass()); // Ensures correct colors after bloom
 
         // --- SHADER WARMUP BLOCK ---
         const warmupParticle = () => {
@@ -498,8 +525,8 @@ function LossLandscape() {
             const normalizedHeight = (h - minH) / range;
 
             // Standard height-based coloring
-            const intensity = Math.pow(normalizedHeight, 5.0);
-            const bloom = Math.pow(normalizedHeight, 15.0);
+            const intensity = Math.pow(normalizedHeight, VISUAL_CONFIG.TERRAIN.HEIGHT_INTENSITY);
+            const bloom = Math.pow(normalizedHeight, VISUAL_CONFIG.TERRAIN.HEIGHT_BLOOM);
 
             const r = Math.min(1.0, BASE_COLOR_RGB.r + (intensity * PEAK_COLOR_OFFSET.r) + bloom);
             const g = Math.min(1.0, BASE_COLOR_RGB.g + (intensity * PEAK_COLOR_OFFSET.g) + bloom);
@@ -511,6 +538,44 @@ function LossLandscape() {
         geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
         geometry.rotateX(-Math.PI / 2);
 
+        const applyEdgeFade = (shader) => {
+            // 1. Pass the uniforms
+            shader.uniforms.uTerrainWidth = { value: VISUAL_CONFIG.TERRAIN.WIDTH };
+            shader.uniforms.uTerrainDepth = { value: VISUAL_CONFIG.TERRAIN.DEPTH };
+            shader.uniforms.uFadeMargin = { value: VISUAL_CONFIG.TERRAIN.EDGE_FADE_MARGIN };
+            shader.uniforms.uBackgroundColor = { value: new THREE.Color(VISUAL_CONFIG.SCENE.BACKGROUND) };
+
+            // 2. Vertex Shader: Inject world position calculation
+            shader.vertexShader = `varying vec3 vWorldPosition; \n` + shader.vertexShader;
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <worldpos_vertex>',
+                `#include <worldpos_vertex>
+                 vWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;`
+            );
+
+            // 3. Fragment Shader: Inject the mix logic
+            shader.fragmentShader = `
+                uniform float uTerrainWidth;
+                uniform float uTerrainDepth;
+                uniform float uFadeMargin;
+                uniform vec3 uBackgroundColor;
+                varying vec3 vWorldPosition;
+            \n` + shader.fragmentShader;
+
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <dithering_fragment>',
+                `#include <dithering_fragment>
+                float halfW = uTerrainWidth * 0.5;
+                float halfD = uTerrainDepth * 0.5;
+                float distX = halfW - abs(vWorldPosition.x);
+                float distZ = halfD - abs(vWorldPosition.z);
+                float edgeMask = smoothstep(0.0, uFadeMargin, distX) * smoothstep(0.0, uFadeMargin, distZ);
+                
+                // This line makes the edges blend into the background
+                gl_FragColor.rgb = mix(uBackgroundColor, gl_FragColor.rgb, edgeMask);`
+            );
+        };
+
         const material = new THREE.MeshStandardMaterial({
             vertexColors: true,
             roughness: VISUAL_CONFIG.TERRAIN.ROUGHNESS,
@@ -521,97 +586,59 @@ function LossLandscape() {
         });
 
         material.onBeforeCompile = (shader) => {
-            // 1. Setup Uniforms & Varyings
+            // Keep your existing ripple uniforms
             shader.uniforms.uRippleCenter = rippleUniforms.uRippleCenter;
             shader.uniforms.uRippleTime = rippleUniforms.uRippleTime;
             shader.uniforms.uRippleStrength = { value: VISUAL_CONFIG.INTERACTION.RIPPLE_STRENGTH };
             shader.uniforms.uRippleFreq = { value: VISUAL_CONFIG.INTERACTION.RIPPLE_FREQUENCY };
             shader.uniforms.uRippleSpeed = { value: VISUAL_CONFIG.INTERACTION.RIPPLE_SPEED };
 
-            // 2. Vertex Shader: Inject vWorldPosition to track actual ground height
+            // Keep your ripple vertex logic
             shader.vertexShader = `
-        varying vec3 vWorldPosition;
-        uniform vec3 uRippleCenter;
-        uniform float uRippleTime;
-        uniform float uRippleStrength;
-        uniform float uRippleFreq;
-        uniform float uRippleSpeed;
-    ` + shader.vertexShader;
-
-            shader.vertexShader = shader.vertexShader.replace(
-                '#include <worldpos_vertex>',
-                `
-        #include <worldpos_vertex>
-        // Capture the coordinate after the ripple math but before camera transformation
-        vWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
-        `
-            );
+                uniform vec3 uRippleCenter;
+                uniform float uRippleTime;
+                uniform float uRippleStrength;
+                uniform float uRippleFreq;
+                uniform float uRippleSpeed;
+            ` + shader.vertexShader;
 
             shader.vertexShader = shader.vertexShader.replace(
                 '#include <begin_vertex>',
                 `
-        vec3 vPos = position;
-        // Optimization: Only run expensive distance and wave math if ripple is active
-        if (uRippleTime >= 0.0) {
-            float dist = distance(vPos.xz, uRippleCenter.xz);
-            float wave = sin(dist * uRippleFreq - uRippleTime * uRippleSpeed);
-            float t = uRippleTime / ${VISUAL_CONFIG.INTERACTION.RIPPLE_DURATION.toFixed(1)};
-            float life = 1.0 - pow(t, 3.0); 
-            float ringProgress = uRippleTime * uRippleSpeed;
-            float innerEdge = ringProgress - ${VISUAL_CONFIG.INTERACTION.RIPPLE_SMOOTHNESS.toFixed(1)};
-            float outerEdge = ringProgress + ${VISUAL_CONFIG.INTERACTION.RIPPLE_SMOOTHNESS.toFixed(1)};
-            float ringMask = smoothstep(innerEdge, ringProgress, dist) * (1.0 - smoothstep(ringProgress, outerEdge, dist));
-            float distAttenuation = exp(-dist * 0.004);
-            vPos.y += wave * uRippleStrength * ringMask * life * distAttenuation;
-        }
-        vec3 transformed = vec3(vPos);
-        `
+                vec3 vPos = position;
+                if (uRippleTime >= 0.0) {
+                    float dist = distance(vPos.xz, uRippleCenter.xz);
+                    float wave = sin(dist * uRippleFreq - uRippleTime * uRippleSpeed);
+                    float t = uRippleTime / ${VISUAL_CONFIG.INTERACTION.RIPPLE_DURATION.toFixed(1)};
+                    float life = 1.0 - pow(t, 3.0); 
+                    float ringProgress = uRippleTime * uRippleSpeed;
+                    float innerEdge = ringProgress - ${VISUAL_CONFIG.INTERACTION.RIPPLE_SMOOTHNESS.toFixed(1)};
+                    float outerEdge = ringProgress + ${VISUAL_CONFIG.INTERACTION.RIPPLE_SMOOTHNESS.toFixed(1)};
+                    float ringMask = smoothstep(innerEdge, ringProgress, dist) * (1.0 - smoothstep(ringProgress, outerEdge, dist));
+                    float distAttenuation = exp(-dist * 0.004);
+                    vPos.y += wave * uRippleStrength * ringMask * life * distAttenuation;
+                }
+                vec3 transformed = vec3(vPos);
+                `
             );
 
-            // 3. Fragment Shader: Add the "Valley Mist" based on real height
-            shader.fragmentShader = `
-        varying vec3 vWorldPosition;
-    ` + shader.fragmentShader;
+            // 🚀 THE MAGIC LINE: Apply the fade logic we defined in Step 1
+            applyEdgeFade(shader);
 
+            // Keep your Valley Mist logic at the end
             shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <dithering_fragment>',
-                `
-    #include <dithering_fragment>
-    
-    // 1. Setup the height thresholds
-    float valleyFloor = -25.0; 
-    float valleyTop = 30.0; 
-    
-    if (vWorldPosition.y < valleyTop) {
-        // Calculate factor: 1.0 at deep bottom, 0.0 at top
-        float factor = 1.0 - smoothstep(valleyFloor, valleyTop, vWorldPosition.y);
-        
-        // 2. Define a "Valley Tint" (Deep Electric Blue/Teal)
-        vec3 valleyTint = vec3(0.0, 0.8, 0.9); 
-        
-        // 3. MIX the colors instead of adding them. 
-        // This ensures the color change is visible even in direct sunlight.
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, valleyTint * 0.4, factor * 0.8);
-        
-        // 4. Subtle Glow: Add a tiny bit of emissive pulse so it feels "digital"
-        gl_FragColor.rgb += valleyTint * factor * 0.15;
-    }
-    
-    // --- NEW: Atmospheric Depth Cue ---
-    // Calculate distance from camera to the vertex
-    float dist = length(vViewPosition);
-    
-    // Define where the "Deep Back" starts (e.g., 800 units away)
-    // Optimized haze: using constants directly in the smoothstep
-    float hazeFactor = smoothstep(0.0, 3100.0, dist);
-    
-    // Mix the current color with the background/fog color
-    vec3 hazeColor = vec3(0.0, 0.06, 0.05); // A very dark teal
-    gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, hazeFactor * 0.9);
-    
-    // Safety clamp to prevent color blowout
-    gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(1.1));
-    `
+                'gl_FragColor.rgb = mix(uBackgroundColor, gl_FragColor.rgb, edgeMask);',
+                `gl_FragColor.rgb = mix(uBackgroundColor, gl_FragColor.rgb, edgeMask);
+                
+                float valleyFloor = -25.0; 
+                float valleyTop = 30.0; 
+                if (vWorldPosition.y < valleyTop) {
+                    float factor = 1.0 - smoothstep(valleyFloor, valleyTop, vWorldPosition.y);
+                    vec3 valleyTint = vec3(0.0, 0.4, 0.5); 
+                    gl_FragColor.rgb = mix(gl_FragColor.rgb, valleyTint, factor * 0.4);
+                    gl_FragColor.rgb += valleyTint * factor * 0.05;
+                }
+                gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(1.0));`
             );
         };
 
@@ -652,6 +679,39 @@ function LossLandscape() {
             createWall(DEPTH, WALL_HEIGHT, halfW, yPos, 0, Math.PI/2);  // East
         }
 
+        // --- AMBIENT DUST SYSTEM ---
+        const dustCount = VISUAL_CONFIG.PARTICLES.AMBIENT_DUST.COUNT;
+        const dustGeo = new THREE.BufferGeometry();
+        const dustPositions = new Float32Array(dustCount * 3);
+        const dustVelocities = [];
+
+        for (let i = 0; i < dustCount; i++) {
+            // Random position across the terrain
+            dustPositions[i * 3] = (Math.random() - 0.5) * VISUAL_CONFIG.TERRAIN.WIDTH;
+            dustPositions[i * 3 + 1] = Math.random() * VISUAL_CONFIG.PARTICLES.AMBIENT_DUST.HEIGHT_RANGE;
+            dustPositions[i * 3 + 2] = (Math.random() - 0.5) * VISUAL_CONFIG.TERRAIN.DEPTH;
+
+            dustVelocities.push({
+                x: (Math.random() - 0.5) * 0.1,
+                y: Math.random() * 0.05,
+                z: (Math.random() - 0.5) * 0.1
+            });
+        }
+
+        dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+        const dustMat = new THREE.PointsMaterial({
+            color: VISUAL_CONFIG.PARTICLES.AMBIENT_DUST.COLOR,
+            size: VISUAL_CONFIG.PARTICLES.AMBIENT_DUST.SIZE,
+            transparent: true,
+            opacity: 0.4,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            sizeAttenuation: true
+        });
+
+        const dustPoints = new THREE.Points(dustGeo, dustMat);
+        scene.add(dustPoints);
+
         // WIREFRAME
         const wireframeMat = new THREE.MeshBasicMaterial({
             color: VISUAL_CONFIG.TERRAIN.WIREFRAME_COLOR,
@@ -660,6 +720,11 @@ function LossLandscape() {
             opacity: VISUAL_CONFIG.TERRAIN.WIREFRAME_OPACITY,
             blending: THREE.AdditiveBlending
         });
+
+        wireframeMat.onBeforeCompile = (shader) => {
+            applyEdgeFade(shader);
+        };
+
         const wireframe = new THREE.Mesh(geometry.clone(), wireframeMat);
         wireframe.position.y = 0.05;
         scene.add(wireframe);
@@ -868,6 +933,24 @@ function LossLandscape() {
                 }
                 spawnQueueRef.current -= toSpawn;
             }
+
+            // DUST ANIMATION
+            const dustPositionsAttr = dustPoints.geometry.attributes.position;
+            for (let i = 0; i < dustCount; i++) {
+                let x = dustPositionsAttr.getX(i);
+                let y = dustPositionsAttr.getY(i);
+                let z = dustPositionsAttr.getZ(i);
+
+                // Apply slow drift
+                y += Math.sin(timeRef.current + i) * 0.05;
+                x += Math.cos(timeRef.current * 0.5 + i) * 0.02;
+
+                // Reset if they float too high or far
+                if (y > VISUAL_CONFIG.PARTICLES.AMBIENT_DUST.HEIGHT_RANGE) y = 0;
+
+                dustPositionsAttr.setXYZ(i, x, y, z);
+            }
+            dustPositionsAttr.needsUpdate = true;
 
             // 1. ANALYZE CURRENT STATE
             const activeParticles = particlesRef.current.filter(p => !p.isFading);
@@ -1136,7 +1219,8 @@ function LossLandscape() {
                 reticle.visible = false;
             }
 
-            rendererRef.current.render(sceneRef.current, cameraRef.current);
+            // rendererRef.current.render(sceneRef.current, cameraRef.current);
+            composer.render();
         };
         animate();
 
