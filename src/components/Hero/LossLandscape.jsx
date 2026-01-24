@@ -8,17 +8,17 @@ import {OutputPass} from 'three/examples/jsm/postprocessing/OutputPass.js';
 // DONE: fix left and right camera movement - I think it's currently not dependent on the CAMERA_LOOK_AT / its hard coded
 // DONE: disable camera movement unless user is holding down middle click
 // DONE: fix camera choppiness whn wave is spawning
-// TODO: allow user to spawn balls by holding down left lick
-// TODO: add terrain distortion on mouse hover over terrain
-// TODO: clean up visual configs - some configs aren't actually used
 // DONE: dont' render things behind the camera / don't make the terrain behind the camera
-// TODO: make reticule larger with distance from camera
-// TODO: make reticule brighter / stand out more
-// TODO: make transition between "wave waiting state" to "running state" smoother
 // DONE: add bias to points far away from camera
 // TODO: add loss function in background
-// TODO: add ability to load terrain data from drive since first seed will be manual / terrain will be the same everytime
+// TODO: increase wireframe opacity around recticle
+// TODO: allow user to spawn balls by holding down left lick
+// TODO: make reticule larger with distance from camera
+// TODO: make animations between "wave waiting state" to "running state" smoother
+// TODO: make particles start small and grow bigger when wave spawns them in
+// TODO: make particles expand before they dissapear
 // TODO: add cinematic load in
+// TODO: clean up visual configs - some configs aren't actually used
 
 // ==========================================
 // 🎛️ GLOBAL VISUAL CONFIGURATION (TUNED DOWN)
@@ -75,7 +75,7 @@ const VISUAL_CONFIG = {
     WAVES: {
         FIRST_WAVE_DELAY: 1.0,    // Seconds to wait after page load before first "Inhale"
         PARTICLES_PER_WAVE: 1000,    // How many "seekers" spawn at once
-        BATCH_SIZE: 20,              // Higher = faster wave, Lower = smoother FPS
+        BATCH_SIZE: 40,              // Higher = faster wave, Lower = smoother FPS
         MAX_WAVE_INTERVAL: 15.0,        // seconds between waves
         SWELL_TIME: 2.0,          // Seconds BEFORE spawn the glow starts building
         MAX_SWELL_OPACITY: 0.22,   // Peak brightness at the moment of spawn
@@ -97,7 +97,7 @@ const VISUAL_CONFIG = {
         INITIAL_PITCH: -0.3,
 
         // 🆕 Intuitive Control Settings
-        MOUSE_SMOOTHING: 0.05,      // Higher = snappier, Lower = more "weight"
+        MOUSE_SMOOTHING: 1.0,      // Higher = snappier, Lower = more "weight"
         // 🔍 ZOOM SETTINGS
         ZOOM_STEER_STRENGTH: 0.0,
 
