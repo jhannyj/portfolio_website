@@ -240,6 +240,7 @@ function LossLandscape() {
     const raycasterRef = useRef(new THREE.Raycaster());
     const internalMouseRef = useRef(new THREE.Vector2());
     const gradientMapRef = useRef(null); // Pre-computed gradient map for ~90% CPU reduction
+    const isMiddleClickDown = useRef(false);
 
     const lossFunction = (x, z) => {
         const { GLOBAL_SCALE, HEIGHT_MULTIPLIER, SEED } = VISUAL_CONFIG.TERRAIN;
@@ -699,8 +700,25 @@ function LossLandscape() {
             }
         };
 
+        const handleMouseDown = (e) => {
+            // button === 1 is middle click
+            if (e.button === 1) {
+                isMiddleClickDown.current = true;
+                // Optional: prevent the "autoscroll" icon from appearing
+                e.preventDefault();
+            }
+        };
+
+        const handleMouseUp = (e) => {
+            if (e.button === 1) {
+                isMiddleClickDown.current = false;
+            }
+        };
+
         containerRef.current.addEventListener('mousemove', handleMouseMove);
         containerRef.current.addEventListener('click', handleClick);
+        containerRef.current.addEventListener('mousedown', handleMouseDown);
+        window.addEventListener('mouseup', handleMouseUp);
 
         // WAVE
         // Deprecated: all particles at the same time
@@ -817,15 +835,17 @@ function LossLandscape() {
             // 2. CAMERA & ZOOM
             // --- Inside the animate function ---
 
-// 1. Smooth the mouse inputs (Remove zoomRef smoothing)
-            smoothMouseX += (mouseRef.current.x - smoothMouseX) * CAMERA.MOUSE_SMOOTHING;
-            smoothMouseY += (mouseRef.current.y - smoothMouseY) * CAMERA.MOUSE_SMOOTHING;
+            // 1. Smooth the mouse inputs (Remove zoomRef smoothing)
+            if (isMiddleClickDown.current) {
+                smoothMouseX += (mouseRef.current.x - smoothMouseX) * CAMERA.MOUSE_SMOOTHING;
+                smoothMouseY += (mouseRef.current.y - smoothMouseY) * CAMERA.MOUSE_SMOOTHING;
+            }
 
-// 2. Camera Position (Fixed Z-axis)
-// We use the INITIAL_POS.z as the fixed distance
+            // 2. Camera Position (Fixed Z-axis)
+            // We use the INITIAL_POS.z as the fixed distance
             const fixedZ = CAMERA.INITIAL_POS.z;
 
-// This provides the "slight camera movement" (leaning) you requested
+            // This provides the "slight camera movement" (leaning) you requested
             const leanX = smoothMouseX * (fixedZ * CAMERA.ZOOM_STEER_STRENGTH);
             const leanY = smoothMouseY * (fixedZ * CAMERA.ZOOM_STEER_STRENGTH);
 
@@ -1043,8 +1063,9 @@ function LossLandscape() {
         return () => {
             containerRef.current?.removeEventListener('mousemove', handleMouseMove);
             containerRef.current?.removeEventListener('click', handleClick);
-            containerRef.current?.removeEventListener('wheel', handleWheel);
             cancelAnimationFrame(frameIdRef.current);
+            containerRef.current?.removeEventListener('mousedown', handleMouseDown);
+            window.removeEventListener('mouseup', handleMouseUp);
             globalParticleGeo.dispose();
             globalTrailGeo.dispose();
             renderer.dispose();
