@@ -1,8 +1,8 @@
 import {useEffect, useRef} from 'react';
 import * as THREE from 'three';
 
-// TODO: fix left and right camera movement - I think it's currently not dependent on the CAMERA_LOOK_AT / its hard coded
-// TODO: disable camera movement unless user is holding down middle click
+// DONE: fix left and right camera movement - I think it's currently not dependent on the CAMERA_LOOK_AT / its hard coded
+// DONE: disable camera movement unless user is holding down middle click
 // TODO: allow user to spawn balls by holding down left lick
 // TODO: add terrain distortion on mouse hover over terrain
 // TODO: clean up visual configs - some configs aren't actually used
@@ -21,8 +21,8 @@ import * as THREE from 'three';
 const VISUAL_CONFIG = {
     // 1. TERRAIN & MOUNTAIN RANGES
     TERRAIN: {
-        WIDTH: 1600,              // The horizontal span (X-axis) of the terrain plane
-        DEPTH: 1600,             // The vertical span (Z-axis) of the terrain plane
+        WIDTH: 2000,              // The horizontal span (X-axis) of the terrain plane
+        DEPTH: 1500,             // The vertical span (Z-axis) of the terrain plane
         RESOLUTION: 200,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
         GLOBAL_SCALE: 0.008,     // ⬅️ THIS WAS MISSING
         HEIGHT_MULTIPLIER: 3.0,
@@ -81,8 +81,8 @@ const VISUAL_CONFIG = {
     // 2. CAMERA & CONTROLS
     CAMERA: {
         FOV: 55,                          // Wide angle for the terrain
-        INITIAL_POS: { x: 0, y: 150, z: 450 }, // Fixed starting position
-        LOOK_AT_TARGET: { x: 0, y: 0, z: 0 }, // The default point the camera looks at
+        INITIAL_POS: { x: 0, y: 180, z: 250 }, // Fixed starting position
+        LOOK_AT_TARGET: { x: 0, y: 0, z: -100 }, // The default point the camera looks at
 
         // 🆕 Intuitive Control Settings
         MOUSE_SMOOTHING: 0.05,      // Higher = snappier, Lower = more "weight"
