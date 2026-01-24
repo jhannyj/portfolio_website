@@ -81,17 +81,16 @@ const VISUAL_CONFIG = {
     // 2. CAMERA & CONTROLS
     CAMERA: {
         FOV: 55,                          // Wide angle for the terrain
-        INITIAL_POS: { x: 0, y: 100, z: 0 }, // Fixed starting position
-        LOOK_AT_TARGET: { x: -132, y: 60, z: 0 }, // The default point the camera looks at
+        INITIAL_POS: { x: 0, y: 150, z: 450 }, // Fixed starting position
+        LOOK_AT_TARGET: { x: 0, y: 0, z: 0 }, // The default point the camera looks at
 
         // 🆕 Intuitive Control Settings
-        MOUSE_SMOOTHING: 0.06,      // Higher = snappier, Lower = more "weight"
-
+        MOUSE_SMOOTHING: 0.05,      // Higher = snappier, Lower = more "weight"
         // 🔍 ZOOM SETTINGS
-        ZOOM_SENSITIVITY: 0.05,     // How much each scroll notch moves the camera
+        ZOOM_SENSITIVITY: 0.15,     // How much each scroll notch moves the camera
         ZOOM_SMOOTHING: 0.1,        // Velocity of the zoom glide (0.1 = smooth)
-        ZOOM_STEER_STRENGTH: 1.0,
-        ZOOM_LIMITS: { MIN: 20, MAX: 150 }, // Min = closest zoom, Max = furthest zoom
+        ZOOM_STEER_STRENGTH: 0.1,
+        ZOOM_LIMITS: { MIN: 100, MAX: 1000 }, // Min = closest zoom, Max = furthest zoom
 
         LIMITS: {
             YAW: 3.14 * 2,       // Allowed to turn 0.6 radians left and 0.6 right from target
@@ -100,8 +99,8 @@ const VISUAL_CONFIG = {
         },
 
         // Sensitivity of the "Turn"
-        LOOK_SENSITIVITY_X: 1.2 * 2.0,      // Turning head left/right
-        LOOK_SENSITIVITY_Y: 0.8 * 4.0,      // Tilting head up/down
+        LOOK_SENSITIVITY_X: 800.0,      // Turning head left/right
+        LOOK_SENSITIVITY_Y: 600.0,      // Tilting head up/down
     },
 
     CURSOR: {
@@ -773,30 +772,12 @@ function LossLandscape() {
         // This ensures the first wave doesn't start until FIRST_WAVE_DELAY is reached
         stateStartTimeRef.current = VISUAL_CONFIG.WAVES.FIRST_WAVE_DELAY - VISUAL_CONFIG.WAVES.BUFFER_TIME;
 
-        let lastLogTime = 0;
         const animate = () => {
             frameIdRef.current = requestAnimationFrame(animate);
             timeRef.current += 0.016;
             const currentTime = timeRef.current;
 
             const { CAMERA, PHYSICS, PARTICLES, CURSOR, WAVES , TERRAIN} = VISUAL_CONFIG;
-
-            // 2. PRINT CAMERA DATA EVERY 5 SECONDS
-            if (currentTime - lastLogTime > 5.0) {
-                const lookAt = new THREE.Vector3();
-                // Extract the direction the camera is facing
-                cameraRef.current.getWorldDirection(lookAt);
-
-                // Multiply by a distance to see what the "target" point is
-                // Or simply log the current computed target from your config logic
-                console.log("📸 Camera Target:", {
-                    x: CAMERA.LOOK_AT_TARGET.x + (smoothMouseX * CAMERA.LOOK_SENSITIVITY_X * 50),
-                    y: CAMERA.LOOK_AT_TARGET.y + (smoothMouseY * CAMERA.LOOK_SENSITIVITY_Y * 30),
-                    z: CAMERA.LOOK_AT_TARGET.z
-                });
-
-                lastLogTime = currentTime;
-            }
 
             if (spawnQueueRef.current > 0) {
                 const toSpawn = Math.min(spawnQueueRef.current, WAVES.BATCH_SIZE);
@@ -861,23 +842,31 @@ function LossLandscape() {
                 }
             }
 
-
-
             // 2. CAMERA & ZOOM
+            // --- Inside the animate function ---
+
+            // 1. Smooth the inputs
             smoothMouseX += (mouseRef.current.x - smoothMouseX) * CAMERA.MOUSE_SMOOTHING;
             smoothMouseY += (mouseRef.current.y - smoothMouseY) * CAMERA.MOUSE_SMOOTHING;
             zoomRef.current += (targetZoomRef.current - zoomRef.current) * CAMERA.ZOOM_SMOOTHING;
 
-            const zoomProgress = (CAMERA.INITIAL_POS.z - zoomRef.current) * CAMERA.ZOOM_STEER_STRENGTH;
-            cameraPosRef.current.x += (CAMERA.INITIAL_POS.x + (smoothMouseX * zoomProgress) - cameraPosRef.current.x) * CAMERA.ZOOM_SMOOTHING;
-            cameraPosRef.current.y += (CAMERA.INITIAL_POS.y + (smoothMouseY * zoomProgress) - cameraPosRef.current.y) * CAMERA.ZOOM_SMOOTHING;
+            // 2. Camera Position (Body stays put or leans very slightly)
+            const leanX = smoothMouseX * (zoomRef.current * CAMERA.ZOOM_STEER_STRENGTH);
+            const leanY = smoothMouseY * (zoomRef.current * CAMERA.ZOOM_STEER_STRENGTH);
 
-            cameraRef.current.position.set(cameraPosRef.current.x, cameraPosRef.current.y, zoomRef.current);
-            cameraRef.current.lookAt(
-                CAMERA.LOOK_AT_TARGET.x + (smoothMouseX * CAMERA.LOOK_SENSITIVITY_X * 50),
-                CAMERA.LOOK_AT_TARGET.y + (smoothMouseY * CAMERA.LOOK_SENSITIVITY_Y * 30),
-                CAMERA.LOOK_AT_TARGET.z
+            cameraRef.current.position.set(
+                CAMERA.INITIAL_POS.x + leanX,
+                CAMERA.INITIAL_POS.y + leanY,
+                zoomRef.current
             );
+
+        // 3. Rotation Logic (The "LookAt" point moves, creating the rotation effect)
+        // We project a target point far in front of the camera that shifts with the mouse
+            const rotateX = CAMERA.LOOK_AT_TARGET.x + (smoothMouseX * CAMERA.LOOK_SENSITIVITY_X);
+            const rotateY = CAMERA.LOOK_AT_TARGET.y + (smoothMouseY * CAMERA.LOOK_SENSITIVITY_Y);
+            const rotateZ = CAMERA.LOOK_AT_TARGET.z; // This stays at the center of the map
+
+            cameraRef.current.lookAt(rotateX, rotateY, rotateZ);
 
             // Inside the for-loop in animate():
             for (let i = particlesRef.current.length - 1; i >= 0; i--) {
