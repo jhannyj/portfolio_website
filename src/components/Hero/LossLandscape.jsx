@@ -87,16 +87,7 @@ const VISUAL_CONFIG = {
         // 🆕 Intuitive Control Settings
         MOUSE_SMOOTHING: 0.05,      // Higher = snappier, Lower = more "weight"
         // 🔍 ZOOM SETTINGS
-        ZOOM_SENSITIVITY: 0.15,     // How much each scroll notch moves the camera
-        ZOOM_SMOOTHING: 0.1,        // Velocity of the zoom glide (0.1 = smooth)
         ZOOM_STEER_STRENGTH: 0.1,
-        ZOOM_LIMITS: { MIN: 100, MAX: 1000 }, // Min = closest zoom, Max = furthest zoom
-
-        LIMITS: {
-            YAW: 3.14 * 2,       // Allowed to turn 0.6 radians left and 0.6 right from target
-            PITCH_UP: 3.14,  // Allowed to look 0.3 up from target
-            PITCH_DOWN: 3.14 // Allowed to look 0.3 down from target
-        },
 
         // Sensitivity of the "Turn"
         LOOK_SENSITIVITY_X: 800.0,      // Turning head left/right
@@ -242,12 +233,6 @@ function LossLandscape() {
     const mouseRef = useRef({ x: 0, y: 0 });
     const frameIdRef = useRef(null);
     const timeRef = useRef(0);
-    const zoomRef = useRef(VISUAL_CONFIG.CAMERA.INITIAL_POS.z);
-    const targetZoomRef = useRef(VISUAL_CONFIG.CAMERA.INITIAL_POS.z);
-    const cameraPosRef = useRef({
-        x: VISUAL_CONFIG.CAMERA.INITIAL_POS.x,
-        y: VISUAL_CONFIG.CAMERA.INITIAL_POS.y
-    });
     const waveStateRef = useRef('WAITING'); // 'ACTIVE', 'WAITING', 'SWELLING'
     const stateStartTimeRef = useRef(0);
     const lastWaveTimeRef = useRef(0);
@@ -714,21 +699,8 @@ function LossLandscape() {
             }
         };
 
-        const handleWheel = (e) => {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                const { ZOOM_SENSITIVITY, ZOOM_LIMITS } = VISUAL_CONFIG.CAMERA;
-                targetZoomRef.current = THREE.MathUtils.clamp(
-                    targetZoomRef.current + e.deltaY * ZOOM_SENSITIVITY,
-                    ZOOM_LIMITS.MIN,
-                    ZOOM_LIMITS.MAX
-                );
-            }
-        };
-
         containerRef.current.addEventListener('mousemove', handleMouseMove);
         containerRef.current.addEventListener('click', handleClick);
-        containerRef.current.addEventListener('wheel', handleWheel, { passive: false });
 
         // WAVE
         // Deprecated: all particles at the same time
@@ -845,26 +817,29 @@ function LossLandscape() {
             // 2. CAMERA & ZOOM
             // --- Inside the animate function ---
 
-            // 1. Smooth the inputs
+// 1. Smooth the mouse inputs (Remove zoomRef smoothing)
             smoothMouseX += (mouseRef.current.x - smoothMouseX) * CAMERA.MOUSE_SMOOTHING;
             smoothMouseY += (mouseRef.current.y - smoothMouseY) * CAMERA.MOUSE_SMOOTHING;
-            zoomRef.current += (targetZoomRef.current - zoomRef.current) * CAMERA.ZOOM_SMOOTHING;
 
-            // 2. Camera Position (Body stays put or leans very slightly)
-            const leanX = smoothMouseX * (zoomRef.current * CAMERA.ZOOM_STEER_STRENGTH);
-            const leanY = smoothMouseY * (zoomRef.current * CAMERA.ZOOM_STEER_STRENGTH);
+// 2. Camera Position (Fixed Z-axis)
+// We use the INITIAL_POS.z as the fixed distance
+            const fixedZ = CAMERA.INITIAL_POS.z;
+
+// This provides the "slight camera movement" (leaning) you requested
+            const leanX = smoothMouseX * (fixedZ * CAMERA.ZOOM_STEER_STRENGTH);
+            const leanY = smoothMouseY * (fixedZ * CAMERA.ZOOM_STEER_STRENGTH);
 
             cameraRef.current.position.set(
                 CAMERA.INITIAL_POS.x + leanX,
                 CAMERA.INITIAL_POS.y + leanY,
-                zoomRef.current
+                fixedZ
             );
 
-        // 3. Rotation Logic (The "LookAt" point moves, creating the rotation effect)
-        // We project a target point far in front of the camera that shifts with the mouse
+// 3. Rotation Logic
+// The camera body leans (Step 2) while looking at a shifting target (Step 3)
             const rotateX = CAMERA.LOOK_AT_TARGET.x + (smoothMouseX * CAMERA.LOOK_SENSITIVITY_X);
             const rotateY = CAMERA.LOOK_AT_TARGET.y + (smoothMouseY * CAMERA.LOOK_SENSITIVITY_Y);
-            const rotateZ = CAMERA.LOOK_AT_TARGET.z; // This stays at the center of the map
+            const rotateZ = CAMERA.LOOK_AT_TARGET.z;
 
             cameraRef.current.lookAt(rotateX, rotateY, rotateZ);
 
