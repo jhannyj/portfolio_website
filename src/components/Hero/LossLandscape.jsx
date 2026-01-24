@@ -26,6 +26,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 const VISUAL_CONFIG = {
     DEBUG: {
         SHOW_BOUNDARIES: false, // Toggle this to false to hide them
+        SHOW_FPS: true,
         BOUNDARY_COLOR: 0xff0000,
         BOUNDARY_OPACITY: 1.0,
         WALL_HEIGHT: 10000,
@@ -273,6 +274,9 @@ function LossLandscape() {
     const isMiddleClickDown = useRef(false);
     const cameraRotation = useRef({ yaw: VISUAL_CONFIG.CAMERA.INITIAL_YAW, pitch: VISUAL_CONFIG.CAMERA.INITIAL_PITCH });
     const lastMousePos = useRef({ x: 0, y: 0 });
+    const fpsRef = useRef(null); // Ref for the DOM element
+    const frameCountRef = useRef(0);
+    const lastFpsUpdateTimeRef = useRef(0);
 
     const lossFunction = (x, z) => {
         const { GLOBAL_SCALE, HEIGHT_MULTIPLIER, SEED } = VISUAL_CONFIG.TERRAIN;
@@ -934,6 +938,19 @@ function LossLandscape() {
                 spawnQueueRef.current -= toSpawn;
             }
 
+            // 🟢 FPS COUNTER LOGIC
+            if (VISUAL_CONFIG.DEBUG.SHOW_FPS) {
+                frameCountRef.current++;
+                // Update every 1 second (approx)
+                if (currentTime - lastFpsUpdateTimeRef.current >= 1.0) {
+                    if (fpsRef.current) {
+                        fpsRef.current.innerText = `FPS: ${frameCountRef.current}`;
+                    }
+                    frameCountRef.current = 0;
+                    lastFpsUpdateTimeRef.current = currentTime;
+                }
+            }
+
             // DUST ANIMATION
             const dustPositionsAttr = dustPoints.geometry.attributes.position;
             for (let i = 0; i < dustCount; i++) {
@@ -1236,7 +1253,33 @@ function LossLandscape() {
         };
     }, []);
 
-    return <div ref={containerRef} className="loss-landscape-container" />;
+    // return <div ref={containerRef} className="loss-landscape-container" />;
+    return (
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+            {VISUAL_CONFIG.DEBUG.SHOW_FPS && (
+                <div
+                    ref={fpsRef}
+                    style={{
+                        position: 'absolute',
+                        top: '10px',
+                        left: '10px',
+                        color: '#00ff99', // Matches your cursor color
+                        fontFamily: 'monospace',
+                        fontSize: '14px',
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        pointerEvents: 'none',
+                        zIndex: 100,
+                        border: '1px solid #00ff9933'
+                    }}
+                >
+                    FPS: --
+                </div>
+            )}
+            <div ref={containerRef} className="loss-landscape-container" style={{ width: '100%', height: '100%' }} />
+        </div>
+    );
 }
 
 export default LossLandscape;
