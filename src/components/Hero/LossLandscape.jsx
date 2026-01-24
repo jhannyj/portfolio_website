@@ -33,9 +33,9 @@ const VISUAL_CONFIG = {
 
     // 1. TERRAIN & MOUNTAIN RANGES
     TERRAIN: {
-        WIDTH: 3000,              // The horizontal span (X-axis) of the terrain plane
-        DEPTH: 3000,             // The vertical span (Z-axis) of the terrain plane
-        RESOLUTION: 400,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
+        WIDTH: 2000,              // The horizontal span (X-axis) of the terrain plane
+        DEPTH: 2000,             // The vertical span (Z-axis) of the terrain plane
+        RESOLUTION: 250,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
         GLOBAL_SCALE: 0.008,     // ⬅️ THIS WAS MISSING
         HEIGHT_MULTIPLIER: 3.0,
 
@@ -88,7 +88,7 @@ const VISUAL_CONFIG = {
     // 2. CAMERA & CONTROLS
     CAMERA: {
         FOV: 55,                          // Wide angle for the terrain
-        INITIAL_POS: { x: 0, y: 180, z: 1100 }, // Fixed starting position
+        INITIAL_POS: { x: 0, y: 160, z: 200 }, // Fixed starting position
         INITIAL_YAW: 0.0,
         INITIAL_PITCH: -0.3,
 
@@ -99,13 +99,13 @@ const VISUAL_CONFIG = {
 
         // Sensitivity of the "Turn"
         RELATIVE_SENSITIVITY_X: 0.001,      // Turning head left/right
-        RELATIVE_SENSITIVITY_Y: 0.001,      // Tilting head up/down
+        RELATIVE_SENSITIVITY_Y: 0.002,      // Tilting head up/down
 
         LIMITS: {
             LEFT: 80,    // Max degrees to the left
             RIGHT: 80,   // Max degrees to the right
             UP: 10,      // Max degrees looking up
-            DOWN: 40     // Max degrees looking down
+            DOWN: 60,     // Max degrees looking down
         }
     },
 
@@ -1005,7 +1005,7 @@ function LossLandscape() {
 
             // 2. Camera Position (Fixed Z-axis)
             // We use the INITIAL_POS.z as the fixed distance
-            const fixedZ = CAMERA.INITIAL_POS.z;
+        const fixedZ = (TERRAIN.DEPTH / 2.0) - CAMERA.INITIAL_POS.z;
 
             // This provides the "slight camera movement" (leaning) you requested
             const leanX = smoothMouseX * (fixedZ * CAMERA.ZOOM_STEER_STRENGTH);
