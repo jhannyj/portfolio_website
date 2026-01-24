@@ -1,21 +1,21 @@
 import {useEffect, useRef} from 'react';
 import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import {EffectComposer} from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/examples/jsm/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import {OutputPass} from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 // DONE: fix left and right camera movement - I think it's currently not dependent on the CAMERA_LOOK_AT / its hard coded
 // DONE: disable camera movement unless user is holding down middle click
-// TODO: fix camera choppiness whn wave is spawning
+// DONE: fix camera choppiness whn wave is spawning
 // TODO: allow user to spawn balls by holding down left lick
 // TODO: add terrain distortion on mouse hover over terrain
 // TODO: clean up visual configs - some configs aren't actually used
-// TODO: dont' render things behind the camera / don't make the terrain behind the camera
+// DONE: dont' render things behind the camera / don't make the terrain behind the camera
 // TODO: make reticule larger with distance from camera
 // TODO: make reticule brighter / stand out more
 // TODO: make transition between "wave waiting state" to "running state" smoother
-// TODO: add bias to points far away from camera
+// DONE: add bias to points far away from camera
 // TODO: add loss function in background
 // TODO: add ability to load terrain data from drive since first seed will be manual / terrain will be the same everytime
 // TODO: add cinematic load in
@@ -36,7 +36,7 @@ const VISUAL_CONFIG = {
     TERRAIN: {
         WIDTH: 2000,              // The horizontal span (X-axis) of the terrain plane
         DEPTH: 2000,             // The vertical span (Z-axis) of the terrain plane
-        RESOLUTION: 300,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
+        RESOLUTION: 350,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
         GLOBAL_SCALE: 0.008,     // ⬅️ THIS WAS MISSING
         HEIGHT_MULTIPLIER: 3.0,
 
@@ -67,16 +67,16 @@ const VISUAL_CONFIG = {
         ROUGHNESS: 0.7,                                  // Surface texture: 0.0 is shiny/glossy, 1.0 is matte
         METALNESS: 0.5,                                   // Reflectivity: Higher makes the surface look more metallic
         EMISSIVE_INTENSITY: 0.1,
-        HEIGHT_INTENSITY: 10.0,
-        HEIGHT_BLOOM: 80.0,
+        HEIGHT_INTENSITY: 8.0,
+        HEIGHT_BLOOM:  10.0,
         EDGE_FADE_MARGIN: 600.0, // Increase this for a softer, more gradual disappear
     },
 
     WAVES: {
         FIRST_WAVE_DELAY: 1.0,    // Seconds to wait after page load before first "Inhale"
-        PARTICLES_PER_WAVE: 500,    // How many "seekers" spawn at once
-        BATCH_SIZE: 1,              // Higher = faster wave, Lower = smoother FPS
-        MAX_WAVE_INTERVAL: 30.0,        // Seconds between waves
+        PARTICLES_PER_WAVE: 1000,    // How many "seekers" spawn at once
+        BATCH_SIZE: 20,              // Higher = faster wave, Lower = smoother FPS
+        MAX_WAVE_INTERVAL: 15.0,        // seconds between waves
         SWELL_TIME: 2.0,          // Seconds BEFORE spawn the glow starts building
         MAX_SWELL_OPACITY: 0.22,   // Peak brightness at the moment of spawn
         FLASH_DECAY: 0.15,        // Speed of the fade-out after spawn
@@ -84,12 +84,15 @@ const VISUAL_CONFIG = {
         FADE_OUT_SPEED: 0.02,       // How fast they disappear
         MIN_LIFETIME: 1.0,           // Minimum seconds to exist before they can die
         BUFFER_TIME: 1.0,          // Delay AFTER particles stop before "Swell" starts
+        DISTANCE_BIAS: 4.0,  // 1.0 is neutral, 3.0 is very heavy background bias
+        HORIZONTAL_CENTRAL_BIAS: 1.2, // 🆕 1.0 is uniform, > 1.0 clusters toward center
+        MIN_SPAWN_HEIGHT: 0.0, // 🆕 Particles will only spawn if terrain Y > this value
     },
 
     // 2. CAMERA & CONTROLS
     CAMERA: {
         FOV: 55,                          // Wide angle for the terrain
-        INITIAL_POS: { x: 0, y: 160, z: 200 }, // Fixed starting position
+        INITIAL_POS: { x: 0, y: 160, z: 300 }, // Fixed starting position
         INITIAL_YAW: 0.0,
         INITIAL_PITCH: -0.3,
 
@@ -165,9 +168,10 @@ const VISUAL_CONFIG = {
         AMBIENT_DUST: {
             COUNT: 1500,
             SIZE: 1.5,
-            COLOR: 0x00ffcc,
+            COLOR: 0x44aaff,
             DRIFT_SPEED: 0.2,
-            HEIGHT_RANGE: 400,
+            MIN_HEIGHT: 150,      // 🆕 New floor for the dust
+            HEIGHT_RANGE: 300,
         },
     },
 
@@ -186,21 +190,17 @@ const VISUAL_CONFIG = {
         // Shadow Tuning
         SHADOW_BIAS: -0.0002,           // Prevents "shadow acne" (jagged lines on the mesh)
         SHADOW_NORMAL_BIAS: 0.03,       // Fine-tunes shadow positioning along the terrain curves
-        FOG_DENSITY: 0.0008, // Adjust this: 0.001 is thick, 0.0005 is subtle
+        FOG_DENSITY: 0.0015, // Adjust this: 0.001 is thick, 0.0005 is subtle
     },
 
     INTERACTION: {
-        RIPPLE_STRENGTH: 0.2,    // ⬅️ Vertical height of the wave (was ~8.0)
-        RIPPLE_SPEED: 5.0,      // How fast the ring expands
-        RIPPLE_FREQUENCY: 0.12,  // How many "rings" appear (Lower = fewer/wider)
-        RIPPLE_DURATION: 3.0,    // How many seconds the ripple lasts
-        RIPPLE_SMOOTHNESS: 100.0,
+
     },
 
     BLOOM: {
-        STRENGTH: 1.0,    // How intense the glow is
+        STRENGTH: 0.8,    // How intense the glow is
         RADIUS: 0.4,      // How far the light bleeds
-        THRESHOLD: 0.18    // 0.0 = everything glows, 1.0 = only very bright spots glow
+        THRESHOLD: 0.2    // 0.0 = everything glows, 1.0 = only very bright spots glow
     },
 
 };
@@ -276,8 +276,8 @@ function LossLandscape() {
     const lastMousePos = useRef({ x: 0, y: 0 });
     const fpsRef = useRef(null); // Ref for the DOM element
     const frameCountRef = useRef(0);
-    const lastFrameTimeRef = useRef(performance.now());
-    const lastFpsUpdateTimeRef = useRef(performance.now());
+    const lastFrameTimeRef = useRef(0);
+    const lastFpsUpdateTimeRef = useRef(0);
 
     const lossFunction = (x, z) => {
         const { GLOBAL_SCALE, HEIGHT_MULTIPLIER, SEED } = VISUAL_CONFIG.TERRAIN;
@@ -419,6 +419,9 @@ function LossLandscape() {
     useEffect(() => {
         if (!containerRef.current) return;
 
+        lastFrameTimeRef.current = performance.now();
+        lastFpsUpdateTimeRef.current = performance.now();
+
         console.log("🏔️ Terrain Seed:", VISUAL_CONFIG.TERRAIN.SEED);
 
         // 🚀 BUILD GRADIENT MAP (One-time precomputation for ~90% CPU reduction)
@@ -426,12 +429,6 @@ function LossLandscape() {
         console.time('Gradient Map Build');
         gradientMapRef.current = buildGradientMap();
         console.timeEnd('Gradient Map Build');
-
-        // 1. INITIALIZE RIPPLE UNIFORMS FIRST (Prevents Shader Freeze)
-        const rippleUniforms = {
-            uRippleCenter: { value: new THREE.Vector3(0, 0, 0) },
-            uRippleTime: { value: -1.0 },
-        };
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(VISUAL_CONFIG.SCENE.BACKGROUND);
@@ -591,50 +588,18 @@ function LossLandscape() {
         });
 
         material.onBeforeCompile = (shader) => {
-            // Keep your existing ripple uniforms
-            shader.uniforms.uRippleCenter = rippleUniforms.uRippleCenter;
-            shader.uniforms.uRippleTime = rippleUniforms.uRippleTime;
-            shader.uniforms.uRippleStrength = { value: VISUAL_CONFIG.INTERACTION.RIPPLE_STRENGTH };
-            shader.uniforms.uRippleFreq = { value: VISUAL_CONFIG.INTERACTION.RIPPLE_FREQUENCY };
-            shader.uniforms.uRippleSpeed = { value: VISUAL_CONFIG.INTERACTION.RIPPLE_SPEED };
-
             // Keep your ripple vertex logic
-            shader.vertexShader = `
-                uniform vec3 uRippleCenter;
-                uniform float uRippleTime;
-                uniform float uRippleStrength;
-                uniform float uRippleFreq;
-                uniform float uRippleSpeed;
-            ` + shader.vertexShader;
-
             shader.vertexShader = shader.vertexShader.replace(
                 '#include <begin_vertex>',
-                `
-                vec3 vPos = position;
-                if (uRippleTime >= 0.0) {
-                    float dist = distance(vPos.xz, uRippleCenter.xz);
-                    float wave = sin(dist * uRippleFreq - uRippleTime * uRippleSpeed);
-                    float t = uRippleTime / ${VISUAL_CONFIG.INTERACTION.RIPPLE_DURATION.toFixed(1)};
-                    float life = 1.0 - pow(t, 3.0); 
-                    float ringProgress = uRippleTime * uRippleSpeed;
-                    float innerEdge = ringProgress - ${VISUAL_CONFIG.INTERACTION.RIPPLE_SMOOTHNESS.toFixed(1)};
-                    float outerEdge = ringProgress + ${VISUAL_CONFIG.INTERACTION.RIPPLE_SMOOTHNESS.toFixed(1)};
-                    float ringMask = smoothstep(innerEdge, ringProgress, dist) * (1.0 - smoothstep(ringProgress, outerEdge, dist));
-                    float distAttenuation = exp(-dist * 0.004);
-                    vPos.y += wave * uRippleStrength * ringMask * life * distAttenuation;
-                }
-                vec3 transformed = vec3(vPos);
-                `
+                `vec3 transformed = vec3(position);`
             );
 
-            // 🚀 THE MAGIC LINE: Apply the fade logic we defined in Step 1
             applyEdgeFade(shader);
 
-            // Keep your Valley Mist logic at the end
             shader.fragmentShader = shader.fragmentShader.replace(
                 'gl_FragColor.rgb = mix(uBackgroundColor, gl_FragColor.rgb, edgeMask);',
                 `gl_FragColor.rgb = mix(uBackgroundColor, gl_FragColor.rgb, edgeMask);
-                
+    
                 float valleyFloor = -25.0; 
                 float valleyTop = 30.0; 
                 if (vWorldPosition.y < valleyTop) {
@@ -642,8 +607,7 @@ function LossLandscape() {
                     vec3 valleyTint = vec3(0.0, 0.4, 0.5); 
                     gl_FragColor.rgb = mix(gl_FragColor.rgb, valleyTint, factor * 0.4);
                     gl_FragColor.rgb += valleyTint * factor * 0.05;
-                }
-                gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(1.0));`
+                }`
             );
         };
 
@@ -693,7 +657,7 @@ function LossLandscape() {
         for (let i = 0; i < dustCount; i++) {
             // Random position across the terrain
             dustPositions[i * 3] = (Math.random() - 0.5) * VISUAL_CONFIG.TERRAIN.WIDTH;
-            dustPositions[i * 3 + 1] = Math.random() * VISUAL_CONFIG.PARTICLES.AMBIENT_DUST.HEIGHT_RANGE;
+            dustPositions[i * 3 + 1] = VISUAL_CONFIG.PARTICLES.AMBIENT_DUST.MIN_HEIGHT + (Math.random() * VISUAL_CONFIG.PARTICLES.AMBIENT_DUST.HEIGHT_RANGE);
             dustPositions[i * 3 + 2] = (Math.random() - 0.5) * VISUAL_CONFIG.TERRAIN.DEPTH;
 
             dustVelocities.push({
@@ -710,7 +674,7 @@ function LossLandscape() {
             transparent: true,
             opacity: 0.4,
             blending: THREE.AdditiveBlending,
-            depthWrite: false,
+            depthWrite: true,
             sizeAttenuation: true
         });
 
@@ -845,8 +809,6 @@ function LossLandscape() {
         const handleClick = () => {
             if (reticle.visible) {
                 spawnParticle(reticle.position.x, -reticle.position.z, reticle.position.y);
-                rippleUniforms.uRippleCenter.value.copy(reticle.position);
-                rippleUniforms.uRippleTime.value = 0.0;
             }
         };
 
@@ -870,47 +832,15 @@ function LossLandscape() {
         containerRef.current.addEventListener('mousedown', handleMouseDown);
         window.addEventListener('mouseup', handleMouseUp);
 
-        // WAVE
-        // Deprecated: all particles at the same time
-        // const spawnWave = () => {
-        //     const { PARTICLES_PER_WAVE } = VISUAL_CONFIG.WAVES;
-        //     const raycaster = new THREE.Raycaster();
-        //
-        //     let spawned = 0;
-        //     let attempts = 0;
-        //
-        //     // We keep trying until we hit the exact PARTICLES_PER_WAVE count
-        //     while (spawned < PARTICLES_PER_WAVE && attempts < PARTICLES_PER_WAVE * 3) {
-        //         attempts++;
-        //
-        //         // 1. Pick a random 2D coordinate on the screen (-1 to +1)
-        //         const screenX = (Math.random() * 2 - 1);
-        //         const screenY = (Math.random() * 2 - 1);
-        //
-        //         // 2. Point the raycaster from the camera through this screen point
-        //         raycaster.setFromCamera({ x: screenX, y: screenY }, cameraRef.current);
-        //
-        //         // 3. Find where it hits the terrain
-        //         const intersects = raycaster.intersectObject(terrainRef.current);
-        //
-        //         if (intersects.length > 0) {
-        //             const hit = intersects[0].point;
-        //
-        //             // 4. Extract coordinates
-        //             // Note: terrain is rotated, so hit.z is world space.
-        //             // Our spawnParticle expects internal 'z' which we established as -hit.z
-        //             spawnParticle(hit.x, -hit.z, hit.y);
-        //             spawned++;
-        //         }
-        //     }
-        // };
-
         // 9. ANIMATION LOOP (RESTORED ZOOM & STEERING)
         let smoothMouseX = 0;
         let smoothMouseY = 0;
 
         // This ensures the first wave doesn't start until FIRST_WAVE_DELAY is reached
         stateStartTimeRef.current = VISUAL_CONFIG.WAVES.FIRST_WAVE_DELAY - VISUAL_CONFIG.WAVES.BUFFER_TIME;
+
+        const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        const targetSpawnPoint = new THREE.Vector3(); // Reusable vector to avoid GC
 
         const animate = () => {
             frameIdRef.current = requestAnimationFrame(animate);
@@ -946,23 +876,69 @@ function LossLandscape() {
             const { CAMERA, PHYSICS, PARTICLES, CURSOR, WAVES , TERRAIN} = VISUAL_CONFIG;
 
             if (spawnQueueRef.current > 0) {
+                const { WIDTH, DEPTH } = VISUAL_CONFIG.TERRAIN;
                 const toSpawn = Math.min(spawnQueueRef.current, WAVES.BATCH_SIZE);
 
                 for (let i = 0; i < toSpawn; i++) {
-                    const screenX = (Math.random() * 2 - 1);
-                    const screenY = (Math.random() * 2 - 1);
+                    let rawX = Math.random() * 2 - 1; // Start with -1 to 1
 
-                    // Reuse the existing Vector2 and Raycaster
+                    // Apply power bias while preserving the sign (left/right)
+                    // We use Math.abs to calculate the "pull" and then restore the negative sign if needed
+                    const screenX = Math.pow(Math.abs(rawX), VISUAL_CONFIG.WAVES.HORIZONTAL_CENTRAL_BIAS) * Math.sign(rawX);
+
+                    // 2. BIASED vertical random
+                    // Bias constant: > 1.0 pushes points further away (toward the horizon)
+                    // Try 1.5 to 2.5 for a noticeable "epic" distance effect
+                    const bias = VISUAL_CONFIG.WAVES.DISTANCE_BIAS;
+                    let rawY = Math.random();
+
+                    // This math shifts the distribution toward the top of the screen (the horizon)
+                    // while maintaining the -1 to 1 range required for the raycaster
+                    const biasedY = Math.pow(rawY, 1 / bias);
+                    const screenY = (biasedY * 2 - 1);
+
                     internalMouseRef.current.set(screenX, screenY);
                     raycasterRef.current.setFromCamera(internalMouseRef.current, cameraRef.current);
 
-                    const intersects = raycasterRef.current.intersectObject(terrainRef.current);
-                    if (intersects.length > 0) {
-                        const hit = intersects[0].point;
-                        spawnParticle(hit.x, -hit.z, hit.y);
+                    // ... existing raycast and visibility logic ...
+                    const hit = raycasterRef.current.ray.intersectPlane(groundPlane, targetSpawnPoint);
+
+                    if (hit && Math.abs(hit.x) <= WIDTH / 2 && Math.abs(hit.z) <= DEPTH / 2) {
+                        const realHeight = lossFunction(hit.x, hit.z);
+
+                        if (realHeight < VISUAL_CONFIG.WAVES.MIN_SPAWN_HEIGHT) {
+                            i--; // Decrement the loop counter to "retry" this particle at a different spot
+                            continue;
+                        }
+
+                        // Optional: Visibility Check from previous solution
+                        let isVisible = true;
+                        const camPos = cameraRef.current.position;
+                        for (let t = 0.3; t < 1.0; t += 0.3) {
+                            const checkX = THREE.MathUtils.lerp(camPos.x, hit.x, t);
+                            const checkZ = THREE.MathUtils.lerp(camPos.z, hit.z, t);
+                            const lineOfSightHeight = THREE.MathUtils.lerp(camPos.y, realHeight, t);
+                            if (lossFunction(checkX, checkZ) > lineOfSightHeight + 2.0) {
+                                isVisible = false;
+                                break;
+                            }
+                        }
+
+                        if (isVisible) {
+                            spawnParticle(hit.x, -hit.z, realHeight);
+
+                            spawnQueueRef.current--;
+
+                            if (spawnQueueRef.current === 0) {
+                                // The very last particle has just been placed.
+                                // The 30-second countdown starts NOW.
+                                lastWaveTimeRef.current = performance.now() / 1000;
+                            }
+                        } else {
+                            i--; // Retry this particle if it was hidden
+                        }
                     }
                 }
-                spawnQueueRef.current -= toSpawn;
             }
 
             // DUST ANIMATION
@@ -985,17 +961,30 @@ function LossLandscape() {
 
             // 1. ANALYZE CURRENT STATE
             const activeParticles = particlesRef.current.filter(p => !p.isFading);
-            const allParticlesStopped = activeParticles.length > 0 && activeParticles.every(p => {
-                const speed = Math.sqrt(p.vx * p.vx + p.vz * p.vz);
-                return speed < WAVES.VELOCITY_THRESHOLD && p.age > 120;
-            });
+            const isSpawning = spawnQueueRef.current > 0;
+
+            const allParticlesStopped =
+                !isSpawning && // 1. Must finish the queue first
+                activeParticles.length > 0 && // 2. Must have particles
+                activeParticles.every(p => {
+                    const speed = Math.sqrt(p.vx * p.vx + p.vz * p.vz);
+                    // 3. Only count as stopped if they've had time to move (age > 100 frames)
+                    return (speed < VISUAL_CONFIG.WAVES.VELOCITY_THRESHOLD && p.age > 100);
+                });
 
             // 2. STATE MACHINE TRANSITIONS
-            if (waveStateRef.current === 'ACTIVE' && (allParticlesStopped || currentTime - lastWaveTimeRef.current > WAVES.MAX_WAVE_INTERVAL)) {
-                // Particles have settled. Start the Buffer/Cooldown phase.
-                waveStateRef.current = 'WAITING';
-                stateStartTimeRef.current = currentTime;
-                particlesRef.current.forEach(p => p.isFading = true);
+            if (waveStateRef.current === 'ACTIVE') {
+                const currentTime = performance.now() / 1000;
+
+                // This now measures time since the LAST particle was spawned
+                const waveTimedOut = (currentTime - lastWaveTimeRef.current > VISUAL_CONFIG.WAVES.MAX_WAVE_INTERVAL);
+
+                // We only transition if we aren't spawning AND (all stopped OR timed out)
+                if (spawnQueueRef.current === 0 && (allParticlesStopped || waveTimedOut)) {
+                    waveStateRef.current = 'WAITING';
+                    stateStartTimeRef.current = currentTime;
+                    particlesRef.current.forEach(p => p.isFading = true);
+                }
             }
 
             if (waveStateRef.current === 'WAITING' && (currentTime - stateStartTimeRef.current > WAVES.BUFFER_TIME)) {
@@ -1008,8 +997,10 @@ function LossLandscape() {
                 // Inhale complete. Release the particles!
                 spawnQueueRef.current = VISUAL_CONFIG.WAVES.PARTICLES_PER_WAVE;
                 waveStateRef.current = 'ACTIVE';
-                lastWaveTimeRef.current = currentTime;
-                // Set exactly at peak to ensure the handoff to decay is clean
+
+                // 🆕 This starts the "Active Timer" the moment particles are allowed to spawn
+                //lastWaveTimeRef.current = currentTime;
+
                 wireframe.material.opacity = WAVES.MAX_SWELL_OPACITY;
             }
 
@@ -1108,22 +1099,29 @@ function LossLandscape() {
                 if (!p.isFading && spawnQueueRef.current === 0) {
                     const grad = gradient(p.x, p.z);
 
-                    // Calculate new velocity
-                    const nextVx = (p.vx * VISUAL_CONFIG.PHYSICS.MOMENTUM - grad.dx * VISUAL_CONFIG.PHYSICS.LEARNING_RATE) * frameScale;
-                    const nextVz = (p.vz * VISUAL_CONFIG.PHYSICS.MOMENTUM - grad.dz * VISUAL_CONFIG.PHYSICS.LEARNING_RATE) * frameScale;
+                    // 1. APPLY MOMENTUM (Friction)
+                    // We do NOT multiply this by frameScale. Doing so causes velocity explosion.
+                    // (Optional: For perfect accuracy at low FPS, use Math.pow(MOMENTUM, frameScale))
+                    p.vx *= VISUAL_CONFIG.PHYSICS.MOMENTUM;
+                    p.vz *= VISUAL_CONFIG.PHYSICS.MOMENTUM;
 
-                    const speed = Math.sqrt(nextVx * nextVx + nextVz * nextVz);
+                    // 2. APPLY GRADIENT FORCE (Acceleration)
+                    // Acceleration * Time = Change in Velocity
+                    p.vx -= grad.dx * VISUAL_CONFIG.PHYSICS.LEARNING_RATE * frameScale;
+                    p.vz -= grad.dz * VISUAL_CONFIG.PHYSICS.LEARNING_RATE * frameScale;
 
-                    // This prevents micro-jitter at the bottom of a basin
-                    if (speed > 0.0001) {
-                        p.vx = nextVx;
-                        p.vz = nextVz;
-                        p.x += p.vx;
-                        p.z += p.vz;
-                    } else {
-                        p.vx = 0;
-                        p.vz = 0;
-                    }
+                    // 3. LIMIT VELOCITY (Safety Cap)
+                    // Prevents particles from tunneling through terrain if they get too fast
+                    // You might not need this if the explosion is fixed, but it's good safety.
+                    /* const maxSpeed = 2.0;
+                    p.vx = THREE.MathUtils.clamp(p.vx, -maxSpeed, maxSpeed);
+                    p.vz = THREE.MathUtils.clamp(p.vz, -maxSpeed, maxSpeed);
+                    */
+
+                    // 4. UPDATE POSITION
+                    // Velocity * Time = Change in Position
+                    p.x += p.vx * frameScale;
+                    p.z += p.vz * frameScale;
                 }
 
                 const newY = lossFunction(p.x, p.z) + VISUAL_CONFIG.PARTICLES.HEIGHT_OFFSET;
@@ -1230,12 +1228,7 @@ function LossLandscape() {
                 }
             }
 
-            // 4. RIPPLE & RETICLE
-            if (rippleUniforms.uRippleTime.value >= 0) {
-                rippleUniforms.uRippleTime.value += 0.016;
-                if (rippleUniforms.uRippleTime.value > VISUAL_CONFIG.INTERACTION.RIPPLE_DURATION) rippleUniforms.uRippleTime.value = -1;
-            }
-
+            // 4. RETICLE
             raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
             const hits = raycasterRef.current.intersectObject(terrainRef.current);
             if (hits.length > 0) {
