@@ -19,11 +19,18 @@ import * as THREE from 'three';
 // 🎛️ GLOBAL VISUAL CONFIGURATION (TUNED DOWN)
 // ==========================================
 const VISUAL_CONFIG = {
+    DEBUG: {
+        SHOW_BOUNDARIES: false, // Toggle this to false to hide them
+        BOUNDARY_COLOR: 0xff0000,
+        BOUNDARY_OPACITY: 1.0,
+        WALL_HEIGHT: 10000,
+    },
+
     // 1. TERRAIN & MOUNTAIN RANGES
     TERRAIN: {
-        WIDTH: 2000,              // The horizontal span (X-axis) of the terrain plane
-        DEPTH: 2000,             // The vertical span (Z-axis) of the terrain plane
-        RESOLUTION: 200,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
+        WIDTH: 3000,              // The horizontal span (X-axis) of the terrain plane
+        DEPTH: 3000,             // The vertical span (Z-axis) of the terrain plane
+        RESOLUTION: 400,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
         GLOBAL_SCALE: 0.008,     // ⬅️ THIS WAS MISSING
         HEIGHT_MULTIPLIER: 3.0,
 
@@ -50,7 +57,7 @@ const VISUAL_CONFIG = {
         PEAK_COLOR_OFFSET: { r: 0.1, g: 1.0, b: 0.6 },    // Color added to the peaks (High Loss areas)
 
         WIREFRAME_COLOR: 0x00ff88,                        // Color of the glowing cyber-grid lines
-        WIREFRAME_OPACITY: 0.1,                          // Transparency of the grid (0.0 to 1.0)
+        WIREFRAME_OPACITY: 0.05,                          // Transparency of the grid (0.0 to 1.0)
         ROUGHNESS: 0.7,                                  // Surface texture: 0.0 is shiny/glossy, 1.0 is matte
         METALNESS: 0.5,                                   // Reflectivity: Higher makes the surface look more metallic
         EMISSIVE_INTENSITY: 0.1,
@@ -65,7 +72,7 @@ const VISUAL_CONFIG = {
     },
 
     WAVES: {
-        FIRST_WAVE_DELAY: 1.0,    // Seconds to wait after page load before first "Inhale"
+        FIRST_WAVE_DELAY: 10000.0,    // Seconds to wait after page load before first "Inhale"
         PARTICLES_PER_WAVE: 500,    // How many "seekers" spawn at once
         BATCH_SIZE: 2,              // Higher = faster wave, Lower = smoother FPS
         MAX_WAVE_INTERVAL: 30.0,        // Seconds between waves
@@ -81,18 +88,25 @@ const VISUAL_CONFIG = {
     // 2. CAMERA & CONTROLS
     CAMERA: {
         FOV: 55,                          // Wide angle for the terrain
-        INITIAL_POS: { x: 0, y: 180, z: 250 }, // Fixed starting position
-        INITIAL_YAW: -0.8,
-        INITIAL_PITCH: -0.1,
+        INITIAL_POS: { x: 0, y: 180, z: 1100 }, // Fixed starting position
+        INITIAL_YAW: 0.0,
+        INITIAL_PITCH: -0.3,
 
         // 🆕 Intuitive Control Settings
         MOUSE_SMOOTHING: 0.05,      // Higher = snappier, Lower = more "weight"
         // 🔍 ZOOM SETTINGS
-        ZOOM_STEER_STRENGTH: 0.1,
+        ZOOM_STEER_STRENGTH: 0.0,
 
         // Sensitivity of the "Turn"
         RELATIVE_SENSITIVITY_X: 0.001,      // Turning head left/right
         RELATIVE_SENSITIVITY_Y: 0.001,      // Tilting head up/down
+
+        LIMITS: {
+            LEFT: 80,    // Max degrees to the left
+            RIGHT: 80,   // Max degrees to the right
+            UP: 10,      // Max degrees looking up
+            DOWN: 40     // Max degrees looking down
+        }
     },
 
     CURSOR: {
@@ -151,7 +165,9 @@ const VISUAL_CONFIG = {
     // 5. SCENE & LIGHTING
     SCENE: {
         BACKGROUND: 0x001a12,           // The color of the empty "void" and distant horizon
-        FOG_DENSITY: 0.0044,             // Atmospheric thickness: Higher makes distant peaks fade into black
+        FOG_NEAR: 0,
+        FOG_FAR: 3000,
+        FOG_DENSITY: 0.0024,             // Atmospheric thickness: Higher makes distant peaks fade into black
         LIGHT_SUN_COLOR: 0xffffff,      // Color of the primary directional light source
         LIGHT_SUN_INTENSITY: 2.5,       // Brightness of the "sun"; creates strong highlights
         LIGHT_AMBIENT_INTENSITY: 0.3,   // Base light level; prevents the shadows from being pitch black
@@ -400,7 +416,12 @@ function LossLandscape() {
         };
 
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(VISUAL_CONFIG.SCENE.BACKGROUND, VISUAL_CONFIG.SCENE.FOG_DENSITY);
+        // scene.fog = new THREE.FogExp2(VISUAL_CONFIG.SCENE.BACKGROUND, VISUAL_CONFIG.SCENE.FOG_DENSITY);
+        scene.fog = new THREE.Fog(
+            VISUAL_CONFIG.SCENE.BACKGROUND,
+            VISUAL_CONFIG.SCENE.FOG_NEAR,
+            VISUAL_CONFIG.SCENE.FOG_FAR
+        );
         scene.background = new THREE.Color(VISUAL_CONFIG.SCENE.BACKGROUND);
         sceneRef.current = scene;
 
@@ -409,7 +430,7 @@ function LossLandscape() {
             VISUAL_CONFIG.CAMERA.FOV,
             containerRef.current.clientWidth / containerRef.current.clientHeight,
             0.1,
-            5000
+            10000
         );
         cameraRef.current = camera;
 
@@ -582,7 +603,7 @@ function LossLandscape() {
     
     // Define where the "Deep Back" starts (e.g., 800 units away)
     // Optimized haze: using constants directly in the smoothstep
-    float hazeFactor = smoothstep(600.0, 1200.0, dist);
+    float hazeFactor = smoothstep(0.0, 3100.0, dist);
     
     // Mix the current color with the background/fog color
     vec3 hazeColor = vec3(0.0, 0.06, 0.05); // A very dark teal
@@ -598,6 +619,38 @@ function LossLandscape() {
         terrain.receiveShadow = VISUAL_CONFIG.SCENE.SHADOWS_ENABLED;
         scene.add(terrain);
         terrainRef.current = terrain;
+
+        if (VISUAL_CONFIG.DEBUG.SHOW_BOUNDARIES) {
+            const { WIDTH, DEPTH } = VISUAL_CONFIG.TERRAIN;
+            const { BOUNDARY_COLOR, BOUNDARY_OPACITY, WALL_HEIGHT } = VISUAL_CONFIG.DEBUG;
+
+            const wallMat = new THREE.MeshBasicMaterial({
+                color: BOUNDARY_COLOR,
+                transparent: true,
+                opacity: BOUNDARY_OPACITY,
+                side: THREE.DoubleSide,
+                fog: false,
+            });
+
+            const createWall = (w, h, x, y, z, ry = 0) => {
+                const geo = new THREE.PlaneGeometry(w, h);
+                const mesh = new THREE.Mesh(geo, wallMat);
+                mesh.position.set(x, y, z);
+                mesh.rotation.y = ry;
+                scene.add(mesh);
+                return mesh;
+            };
+
+            const halfW = WIDTH / 2;
+            const halfD = DEPTH / 2;
+            const yPos = WALL_HEIGHT / 2; // Center the wall vertically
+
+            // North, South, East, West Walls
+            createWall(WIDTH, WALL_HEIGHT, 0, yPos, -halfD);          // North
+            createWall(WIDTH, WALL_HEIGHT, 0, yPos, halfD);           // South
+            createWall(DEPTH, WALL_HEIGHT, -halfW, yPos, 0, Math.PI/2); // West
+            createWall(DEPTH, WALL_HEIGHT, halfW, yPos, 0, Math.PI/2);  // East
+        }
 
         // WIREFRAME
         const wireframeMat = new THREE.MeshBasicMaterial({
@@ -700,14 +753,21 @@ function LossLandscape() {
                 const deltaX = e.clientX - lastMousePos.current.x;
                 const deltaY = e.clientY - lastMousePos.current.y;
 
-                // Apply sensitivity from config
-                cameraRotation.current.yaw -= deltaX * VISUAL_CONFIG.CAMERA.RELATIVE_SENSITIVITY_X;
-                cameraRotation.current.pitch -= deltaY * VISUAL_CONFIG.CAMERA.RELATIVE_SENSITIVITY_Y;
+                const { LIMITS, RELATIVE_SENSITIVITY_X, RELATIVE_SENSITIVITY_Y } = VISUAL_CONFIG.CAMERA;
 
-                // Clamp pitch to prevent the camera from flipping over
-                cameraRotation.current.pitch = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, cameraRotation.current.pitch));
+                // 1. Calculate New Yaw with Limits
+                const newYaw = cameraRotation.current.yaw - (deltaX * RELATIVE_SENSITIVITY_X);
+                const maxLeft = -LIMITS.LEFT * (Math.PI / 180);
+                const maxRight = LIMITS.RIGHT * (Math.PI / 180);
+                cameraRotation.current.yaw = Math.max(maxLeft, Math.min(maxRight, newYaw));
 
-                // Update last position for the next frame's delta calculation
+                // 2. Calculate New Pitch with Limits
+                const newPitch = cameraRotation.current.pitch - (deltaY * RELATIVE_SENSITIVITY_Y);
+                const maxUp = LIMITS.UP * (Math.PI / 180);
+                const maxDown = -LIMITS.DOWN * (Math.PI / 180);
+                // Note: Inverted logic here because looking "Down" is usually negative pitch
+                cameraRotation.current.pitch = Math.max(maxDown, Math.min(maxUp, newPitch));
+
                 lastMousePos.current = { x: e.clientX, y: e.clientY };
             }
         };
