@@ -22,7 +22,7 @@ const VISUAL_CONFIG = {
     // 1. TERRAIN & MOUNTAIN RANGES
     TERRAIN: {
         WIDTH: 2000,              // The horizontal span (X-axis) of the terrain plane
-        DEPTH: 1500,             // The vertical span (Z-axis) of the terrain plane
+        DEPTH: 2000,             // The vertical span (Z-axis) of the terrain plane
         RESOLUTION: 200,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
         GLOBAL_SCALE: 0.008,     // ⬅️ THIS WAS MISSING
         HEIGHT_MULTIPLIER: 3.0,
@@ -82,7 +82,8 @@ const VISUAL_CONFIG = {
     CAMERA: {
         FOV: 55,                          // Wide angle for the terrain
         INITIAL_POS: { x: 0, y: 180, z: 250 }, // Fixed starting position
-        LOOK_AT_TARGET: { x: 0, y: 0, z: -100 }, // The default point the camera looks at
+        INITIAL_YAW: -0.8,
+        INITIAL_PITCH: -0.1,
 
         // 🆕 Intuitive Control Settings
         MOUSE_SMOOTHING: 0.05,      // Higher = snappier, Lower = more "weight"
@@ -90,8 +91,8 @@ const VISUAL_CONFIG = {
         ZOOM_STEER_STRENGTH: 0.1,
 
         // Sensitivity of the "Turn"
-        LOOK_SENSITIVITY_X: 800.0,      // Turning head left/right
-        LOOK_SENSITIVITY_Y: 600.0,      // Tilting head up/down
+        RELATIVE_SENSITIVITY_X: 0.001,      // Turning head left/right
+        RELATIVE_SENSITIVITY_Y: 0.001,      // Tilting head up/down
     },
 
     CURSOR: {
@@ -241,6 +242,8 @@ function LossLandscape() {
     const internalMouseRef = useRef(new THREE.Vector2());
     const gradientMapRef = useRef(null); // Pre-computed gradient map for ~90% CPU reduction
     const isMiddleClickDown = useRef(false);
+    const cameraRotation = useRef({ yaw: VISUAL_CONFIG.CAMERA.INITIAL_YAW, pitch: VISUAL_CONFIG.CAMERA.INITIAL_PITCH });
+    const lastMousePos = useRef({ x: 0, y: 0 });
 
     const lossFunction = (x, z) => {
         const { GLOBAL_SCALE, HEIGHT_MULTIPLIER, SEED } = VISUAL_CONFIG.TERRAIN;
@@ -688,8 +691,25 @@ function LossLandscape() {
         // 8. EVENT LISTENERS
         const handleMouseMove = (e) => {
             const rect = containerRef.current.getBoundingClientRect();
+            // Keep this for your Raycaster/Reticle logic
             mouseRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             mouseRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+            // Only update rotation if middle click is held
+            if (isMiddleClickDown.current) {
+                const deltaX = e.clientX - lastMousePos.current.x;
+                const deltaY = e.clientY - lastMousePos.current.y;
+
+                // Apply sensitivity from config
+                cameraRotation.current.yaw -= deltaX * VISUAL_CONFIG.CAMERA.RELATIVE_SENSITIVITY_X;
+                cameraRotation.current.pitch -= deltaY * VISUAL_CONFIG.CAMERA.RELATIVE_SENSITIVITY_Y;
+
+                // Clamp pitch to prevent the camera from flipping over
+                cameraRotation.current.pitch = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, cameraRotation.current.pitch));
+
+                // Update last position for the next frame's delta calculation
+                lastMousePos.current = { x: e.clientX, y: e.clientY };
+            }
         };
 
         const handleClick = () => {
@@ -701,10 +721,10 @@ function LossLandscape() {
         };
 
         const handleMouseDown = (e) => {
-            // button === 1 is middle click
             if (e.button === 1) {
                 isMiddleClickDown.current = true;
-                // Optional: prevent the "autoscroll" icon from appearing
+                // Record where the drag started
+                lastMousePos.current = { x: e.clientX, y: e.clientY };
                 e.preventDefault();
             }
         };
@@ -832,9 +852,8 @@ function LossLandscape() {
                 }
             }
 
-            // 2. CAMERA & ZOOM
-            // --- Inside the animate function ---
-
+            // 2. CAMERA
+            // 1. Position the camera at its base
             // 1. Smooth the mouse inputs (Remove zoomRef smoothing)
             if (isMiddleClickDown.current) {
                 smoothMouseX += (mouseRef.current.x - smoothMouseX) * CAMERA.MOUSE_SMOOTHING;
@@ -857,11 +876,12 @@ function LossLandscape() {
 
 // 3. Rotation Logic
 // The camera body leans (Step 2) while looking at a shifting target (Step 3)
-            const rotateX = CAMERA.LOOK_AT_TARGET.x + (smoothMouseX * CAMERA.LOOK_SENSITIVITY_X);
-            const rotateY = CAMERA.LOOK_AT_TARGET.y + (smoothMouseY * CAMERA.LOOK_SENSITIVITY_Y);
-            const rotateZ = CAMERA.LOOK_AT_TARGET.z;
+            const distance = 100;
+            const targetX = cameraRef.current.position.x + distance * Math.sin(cameraRotation.current.yaw) * Math.cos(cameraRotation.current.pitch);
+            const targetY = cameraRef.current.position.y + distance * Math.sin(cameraRotation.current.pitch);
+            const targetZ = cameraRef.current.position.z - distance * Math.cos(cameraRotation.current.yaw) * Math.cos(cameraRotation.current.pitch);
 
-            cameraRef.current.lookAt(rotateX, rotateY, rotateZ);
+            cameraRef.current.lookAt(targetX, targetY, targetZ);
 
             // Inside the for-loop in animate():
             for (let i = particlesRef.current.length - 1; i >= 0; i--) {
