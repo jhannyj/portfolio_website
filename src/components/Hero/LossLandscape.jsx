@@ -36,7 +36,7 @@ const VISUAL_CONFIG = {
     TERRAIN: {
         WIDTH: 2000,              // The horizontal span (X-axis) of the terrain plane
         DEPTH: 2000,             // The vertical span (Z-axis) of the terrain plane
-        RESOLUTION: 250,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
+        RESOLUTION: 300,        // Mesh density: Higher = smoother detail, Lower = jagged "low-poly" look
         GLOBAL_SCALE: 0.008,     // ⬅️ THIS WAS MISSING
         HEIGHT_MULTIPLIER: 3.0,
 
@@ -276,7 +276,8 @@ function LossLandscape() {
     const lastMousePos = useRef({ x: 0, y: 0 });
     const fpsRef = useRef(null); // Ref for the DOM element
     const frameCountRef = useRef(0);
-    const lastFpsUpdateTimeRef = useRef(0);
+    const lastFrameTimeRef = useRef(performance.now());
+    const lastFpsUpdateTimeRef = useRef(performance.now());
 
     const lossFunction = (x, z) => {
         const { GLOBAL_SCALE, HEIGHT_MULTIPLIER, SEED } = VISUAL_CONFIG.TERRAIN;
@@ -913,8 +914,34 @@ function LossLandscape() {
 
         const animate = () => {
             frameIdRef.current = requestAnimationFrame(animate);
-            timeRef.current += 0.016;
+
+            // 1. Calculate REAL elapsed time
+            const now = performance.now();
+            const deltaTimeMS = now - lastFrameTimeRef.current; // Real ms elapsed
+            const deltaTimeSec = deltaTimeMS / 1000;           // Real seconds elapsed
+            lastFrameTimeRef.current = now;
+
+            // 2. Update timeRef using REAL seconds (for shaders/ripples)
+            timeRef.current += deltaTimeSec;
             const currentTime = timeRef.current;
+
+            // ... (FPS counting logic) ...
+            if (VISUAL_CONFIG.DEBUG.SHOW_FPS) {
+                frameCountRef.current++;
+                // Use the ACTUAL clock to decide when 1 second has passed
+                if (now - lastFpsUpdateTimeRef.current >= 1000) {
+                    if (fpsRef.current) {
+                        fpsRef.current.innerText = `FPS: ${frameCountRef.current}`;
+                    }
+                    frameCountRef.current = 0;
+                    lastFpsUpdateTimeRef.current = now;
+                }
+            }
+
+            // 3. SCALE MOVEMENT
+            // Instead of fixed numbers, multiply your movement constants by a scaler.
+            // At 60fps, deltaTimeSec is ~0.016.
+            const frameScale = deltaTimeSec / 0.0166; // 1.0 at 60fps, 2.0 at 30fps
 
             const { CAMERA, PHYSICS, PARTICLES, CURSOR, WAVES , TERRAIN} = VISUAL_CONFIG;
 
@@ -936,19 +963,6 @@ function LossLandscape() {
                     }
                 }
                 spawnQueueRef.current -= toSpawn;
-            }
-
-            // 🟢 FPS COUNTER LOGIC
-            if (VISUAL_CONFIG.DEBUG.SHOW_FPS) {
-                frameCountRef.current++;
-                // Update every 1 second (approx)
-                if (currentTime - lastFpsUpdateTimeRef.current >= 1.0) {
-                    if (fpsRef.current) {
-                        fpsRef.current.innerText = `FPS: ${frameCountRef.current}`;
-                    }
-                    frameCountRef.current = 0;
-                    lastFpsUpdateTimeRef.current = currentTime;
-                }
             }
 
             // DUST ANIMATION
@@ -1016,8 +1030,8 @@ function LossLandscape() {
             // 1. Position the camera at its base
             // 1. Smooth the mouse inputs (Remove zoomRef smoothing)
             if (isMiddleClickDown.current) {
-                smoothMouseX += (mouseRef.current.x - smoothMouseX) * CAMERA.MOUSE_SMOOTHING;
-                smoothMouseY += (mouseRef.current.y - smoothMouseY) * CAMERA.MOUSE_SMOOTHING;
+                smoothMouseX += (mouseRef.current.x - smoothMouseX) * CAMERA.MOUSE_SMOOTHING * frameScale;
+                smoothMouseY += (mouseRef.current.y - smoothMouseY) * CAMERA.MOUSE_SMOOTHING * frameScale;
             }
 
             // 2. Camera Position (Fixed Z-axis)
@@ -1095,8 +1109,8 @@ function LossLandscape() {
                     const grad = gradient(p.x, p.z);
 
                     // Calculate new velocity
-                    const nextVx = p.vx * VISUAL_CONFIG.PHYSICS.MOMENTUM - grad.dx * VISUAL_CONFIG.PHYSICS.LEARNING_RATE;
-                    const nextVz = p.vz * VISUAL_CONFIG.PHYSICS.MOMENTUM - grad.dz * VISUAL_CONFIG.PHYSICS.LEARNING_RATE;
+                    const nextVx = (p.vx * VISUAL_CONFIG.PHYSICS.MOMENTUM - grad.dx * VISUAL_CONFIG.PHYSICS.LEARNING_RATE) * frameScale;
+                    const nextVz = (p.vz * VISUAL_CONFIG.PHYSICS.MOMENTUM - grad.dz * VISUAL_CONFIG.PHYSICS.LEARNING_RATE) * frameScale;
 
                     const speed = Math.sqrt(nextVx * nextVx + nextVz * nextVz);
 
